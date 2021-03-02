@@ -153,6 +153,8 @@ class BisonParser(object):
 
     error_threshold = 10
 
+    lasterror = None
+
     def __init__(self, buildDirectory=None, **kw):
         """
         Abstract representation of parser
@@ -219,7 +221,7 @@ class BisonParser(object):
             self.bisonEngineLibName = self.__class__.__module__.split('.')[-1] + '_parser'
 
         # get an engine
-        if not hasattr(self,"options"):
+        if not hasattr(self, "options"):
             self.options = []
         self.engine = ParserEngine(self)
 
@@ -326,7 +328,6 @@ class BisonParser(object):
             self.file = fileobj
         if read:
             self.read = read
-
 
         if self.verbose and self.marker:
             print('Parser.run(): self.marker (', self.marker, ') is set')
