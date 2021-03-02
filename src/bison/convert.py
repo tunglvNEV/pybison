@@ -149,7 +149,7 @@ def bisonToPython(bisonfileName, lexfileName, pyfileName, generateClasses=0):
         '',
         'bisonFile = \'%s\'  # original bison file' % bisonfileName,
         'lexFile = \'%s\'    # original flex file' % lexfileName,
-        '\n',
+        '\n\n',
         ]))
 
     # if generating target classes
@@ -330,6 +330,7 @@ def bisonToPython(bisonfileName, lexfileName, pyfileName, generateClasses=0):
         '    # -----------------------------------------',
         '',
         '',
+        '',
         ]))
 
     # and now, create a main for testing which either reads stdin, or a filename arg
@@ -341,6 +342,7 @@ def bisonToPython(bisonfileName, lexfileName, pyfileName, generateClasses=0):
         '    print(\'  -v       Enable verbose messages while parser is running\')',
         '    print(\'  -d       Enable garrulous debug messages from parser engine\')',
         '    print(\'  filename path of a file to parse, defaults to stdin\')',
+        '',
         '',
         'def main(*args):',
         '    """',
@@ -373,6 +375,7 @@ def bisonToPython(bisonfileName, lexfileName, pyfileName, generateClasses=0):
         '    p = Parser(verbose=verbose, keepfiles=keepfiles)',
         '    tree = p.run(file=filename, debug=debug)',
         '    return tree',
+        '',
         '',
         'if __name__ == \'__main__\':',
         '    main(*(sys.argv[1:]))',
