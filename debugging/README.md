@@ -47,7 +47,7 @@ The very last line will print the python version used:
 ```shell
 sys.version_info(major=3, minor=9, micro=2, releaselevel='final', serial=0)
 ```
-which shows that the major/minor version is `3.9`
+which shows that the major/minor version is `3.9`.
 Thus, we need to download `https://github.com/python/cpython/blob/3.9/Tools/gdb/libpython.py` and save it in ` ~/.config/gdb/libpython.py`.
 (Make sure to choose the right branch/python version if you don't work with `3.9`)
 
@@ -69,10 +69,11 @@ export CFLAGS="-O0 -g"; export CXXFLAGS="-O0 -g"
 ```
 
 To debug a python script run the following:
-__WARNING__ pyenv install/starts a bash script, so do
 ```shell
 gdb -ex r --args bash python <programname>.py <arguments>
 ``` 
+
+_Note_: pyenv install/starts a bash script, so we need to execute `bash python`
 
 Happy debugging!
 
