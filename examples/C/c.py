@@ -1660,7 +1660,7 @@ void count();
 #include <string.h>
 #include "Python.h"
 #define YYSTYPE void *
-#include "tokens.h"
+#include "tmp.tab.h"
 extern void *py_parser;
 extern void (*py_input)(PyObject *parser, char *buf, int *result, int max_size);
 #define returntoken(tok) /*printf("%d=%s\n", tok, yytext);*/ yylval = PyUnicode_FromString(strdup(yytext)); return (tok);
