@@ -1,7 +1,7 @@
 //@+leo-ver=4
 //@+node:@file examples/java/table.h
 //@@language c
-#include "tokens.h"
+#include "tmp.tab.h"
 
 struct KeywordToken
 {
