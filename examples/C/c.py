@@ -12,6 +12,7 @@ from bison import BisonParser, BisonNode, BisonSyntaxError
 bisonFile = 'c.y'  # original bison file
 lexFile = 'c.l'    # original flex file
 
+
 class ParseNode(BisonNode):
     """
     This is the base class from which all your
@@ -34,7 +35,7 @@ class ParseNode(BisonNode):
         Dump out human-readable, indented parse tree
         Customise as needed - here, or in the node-specific subclasses
         """
-        BisonNode.dump(self, indent) # alter as needed
+        BisonNode.dump(self, indent)   # alter as needed
 
 
 # ------------------------------------------------------
@@ -51,6 +52,7 @@ class primary_expression_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class postfix_expression_Node(ParseNode):
     """
     Holds a "postfix_expression" parse target and its components.
@@ -60,6 +62,7 @@ class postfix_expression_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class argument_expression_list_Node(ParseNode):
     """
@@ -71,6 +74,7 @@ class argument_expression_list_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class unary_expression_Node(ParseNode):
     """
     Holds an "unary_expression" parse target and its components.
@@ -80,6 +84,7 @@ class unary_expression_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class unary_operator_Node(ParseNode):
     """
@@ -91,6 +96,7 @@ class unary_operator_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class cast_expression_Node(ParseNode):
     """
     Holds a "cast_expression" parse target and its components.
@@ -100,6 +106,7 @@ class cast_expression_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class multiplicative_expression_Node(ParseNode):
     """
@@ -111,6 +118,7 @@ class multiplicative_expression_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class additive_expression_Node(ParseNode):
     """
     Holds an "additive_expression" parse target and its components.
@@ -120,6 +128,7 @@ class additive_expression_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class shift_expression_Node(ParseNode):
     """
@@ -131,6 +140,7 @@ class shift_expression_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class relational_expression_Node(ParseNode):
     """
     Holds a "relational_expression" parse target and its components.
@@ -140,6 +150,7 @@ class relational_expression_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class equality_expression_Node(ParseNode):
     """
@@ -151,6 +162,7 @@ class equality_expression_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class and_expression_Node(ParseNode):
     """
     Holds an "and_expression" parse target and its components.
@@ -160,6 +172,7 @@ class and_expression_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class exclusive_or_expression_Node(ParseNode):
     """
@@ -171,6 +184,7 @@ class exclusive_or_expression_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class inclusive_or_expression_Node(ParseNode):
     """
     Holds an "inclusive_or_expression" parse target and its components.
@@ -180,6 +194,7 @@ class inclusive_or_expression_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class logical_and_expression_Node(ParseNode):
     """
@@ -191,6 +206,7 @@ class logical_and_expression_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class logical_or_expression_Node(ParseNode):
     """
     Holds a "logical_or_expression" parse target and its components.
@@ -200,6 +216,7 @@ class logical_or_expression_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class conditional_expression_Node(ParseNode):
     """
@@ -211,6 +228,7 @@ class conditional_expression_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class assignment_expression_Node(ParseNode):
     """
     Holds an "assignment_expression" parse target and its components.
@@ -220,6 +238,7 @@ class assignment_expression_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class assignment_operator_Node(ParseNode):
     """
@@ -231,6 +250,7 @@ class assignment_operator_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class expression_Node(ParseNode):
     """
     Holds an "expression" parse target and its components.
@@ -240,6 +260,7 @@ class expression_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class constant_expression_Node(ParseNode):
     """
@@ -251,6 +272,7 @@ class constant_expression_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class declaration_Node(ParseNode):
     """
     Holds a "declaration" parse target and its components.
@@ -260,6 +282,7 @@ class declaration_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class declaration_specifiers_Node(ParseNode):
     """
@@ -271,6 +294,7 @@ class declaration_specifiers_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class init_declarator_list_Node(ParseNode):
     """
     Holds an "init_declarator_list" parse target and its components.
@@ -280,6 +304,7 @@ class init_declarator_list_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class init_declarator_Node(ParseNode):
     """
@@ -291,6 +316,7 @@ class init_declarator_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class storage_class_specifier_Node(ParseNode):
     """
     Holds a "storage_class_specifier" parse target and its components.
@@ -300,6 +326,7 @@ class storage_class_specifier_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class type_specifier_Node(ParseNode):
     """
@@ -311,6 +338,7 @@ class type_specifier_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class struct_or_union_specifier_Node(ParseNode):
     """
     Holds a "struct_or_union_specifier" parse target and its components.
@@ -320,6 +348,7 @@ class struct_or_union_specifier_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class struct_or_union_Node(ParseNode):
     """
@@ -331,6 +360,7 @@ class struct_or_union_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class struct_declaration_list_Node(ParseNode):
     """
     Holds a "struct_declaration_list" parse target and its components.
@@ -340,6 +370,7 @@ class struct_declaration_list_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class struct_declaration_Node(ParseNode):
     """
@@ -351,6 +382,7 @@ class struct_declaration_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class specifier_qualifier_list_Node(ParseNode):
     """
     Holds a "specifier_qualifier_list" parse target and its components.
@@ -360,6 +392,7 @@ class specifier_qualifier_list_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class struct_declarator_list_Node(ParseNode):
     """
@@ -371,6 +404,7 @@ class struct_declarator_list_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class struct_declarator_Node(ParseNode):
     """
     Holds a "struct_declarator" parse target and its components.
@@ -380,6 +414,7 @@ class struct_declarator_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class enum_specifier_Node(ParseNode):
     """
@@ -391,6 +426,7 @@ class enum_specifier_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class enumerator_list_Node(ParseNode):
     """
     Holds an "enumerator_list" parse target and its components.
@@ -400,6 +436,7 @@ class enumerator_list_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class enumerator_Node(ParseNode):
     """
@@ -411,6 +448,7 @@ class enumerator_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class type_qualifier_Node(ParseNode):
     """
     Holds a "type_qualifier" parse target and its components.
@@ -420,6 +458,7 @@ class type_qualifier_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class declarator_Node(ParseNode):
     """
@@ -431,6 +470,7 @@ class declarator_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class direct_declarator_Node(ParseNode):
     """
     Holds a "direct_declarator" parse target and its components.
@@ -440,6 +480,7 @@ class direct_declarator_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class pointer_Node(ParseNode):
     """
@@ -451,6 +492,7 @@ class pointer_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class type_qualifier_list_Node(ParseNode):
     """
     Holds a "type_qualifier_list" parse target and its components.
@@ -460,6 +502,7 @@ class type_qualifier_list_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class parameter_type_list_Node(ParseNode):
     """
@@ -471,6 +514,7 @@ class parameter_type_list_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class parameter_list_Node(ParseNode):
     """
     Holds a "parameter_list" parse target and its components.
@@ -480,6 +524,7 @@ class parameter_list_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class parameter_declaration_Node(ParseNode):
     """
@@ -491,6 +536,7 @@ class parameter_declaration_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class identifier_list_Node(ParseNode):
     """
     Holds an "identifier_list" parse target and its components.
@@ -500,6 +546,7 @@ class identifier_list_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class type_name_Node(ParseNode):
     """
@@ -511,6 +558,7 @@ class type_name_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class abstract_declarator_Node(ParseNode):
     """
     Holds an "abstract_declarator" parse target and its components.
@@ -520,6 +568,7 @@ class abstract_declarator_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class direct_abstract_declarator_Node(ParseNode):
     """
@@ -531,6 +580,7 @@ class direct_abstract_declarator_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class initializer_Node(ParseNode):
     """
     Holds an "initializer" parse target and its components.
@@ -540,6 +590,7 @@ class initializer_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class initializer_list_Node(ParseNode):
     """
@@ -551,6 +602,7 @@ class initializer_list_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class statement_Node(ParseNode):
     """
     Holds a "statement" parse target and its components.
@@ -560,6 +612,7 @@ class statement_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class labeled_statement_Node(ParseNode):
     """
@@ -571,6 +624,7 @@ class labeled_statement_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class compound_statement_Node(ParseNode):
     """
     Holds a "compound_statement" parse target and its components.
@@ -580,6 +634,7 @@ class compound_statement_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class declaration_list_Node(ParseNode):
     """
@@ -591,6 +646,7 @@ class declaration_list_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class statement_list_Node(ParseNode):
     """
     Holds a "statement_list" parse target and its components.
@@ -600,6 +656,7 @@ class statement_list_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class expression_statement_Node(ParseNode):
     """
@@ -611,6 +668,7 @@ class expression_statement_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class selection_statement_Node(ParseNode):
     """
     Holds a "selection_statement" parse target and its components.
@@ -620,6 +678,7 @@ class selection_statement_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class iteration_statement_Node(ParseNode):
     """
@@ -631,6 +690,7 @@ class iteration_statement_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class jump_statement_Node(ParseNode):
     """
     Holds a "jump_statement" parse target and its components.
@@ -640,6 +700,7 @@ class jump_statement_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class translation_unit_Node(ParseNode):
     """
@@ -651,6 +712,7 @@ class translation_unit_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class external_declaration_Node(ParseNode):
     """
     Holds an "external_declaration" parse target and its components.
@@ -661,6 +723,7 @@ class external_declaration_Node(ParseNode):
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
 
+
 class function_definition_Node(ParseNode):
     """
     Holds a "function_definition" parse target and its components.
@@ -670,6 +733,7 @@ class function_definition_Node(ParseNode):
 
     def dump(self, indent=0):
         ParseNode.dump(self, indent)
+
 
 class Parser(BisonParser):
     """
@@ -1708,26 +1772,26 @@ L?\"(\\.|[^\\"])*\"	{ count(); returntoken(STRING_LITERAL); }
 
 yywrap()
 {
-	return(1);
+    return(1);
 }
 
 
 comment()
 {
-	char c, c1;
+    char c, c1;
 
 loop:
-	while ((c = input()) != '*' && c != 0)
-      /*putchar(c)*/;
+    while ((c = input()) != '*' && c != 0)
+        /*putchar(c)*/;
 
-	if ((c1 = input()) != '/' && c != 0)
-	{
-		unput(c1);
-		goto loop;
-	}
+    if ((c1 = input()) != '/' && c != 0)
+    {
+        unput(c1);
+        goto loop;
+    }
 
-	if (c != 0)
-      /*putchar(c1)*/;
+    if (c != 0)
+        /*putchar(c1)*/;
 }
 
 
@@ -1735,17 +1799,17 @@ int column = 0;
 
 void count()
 {
-	int i;
+    int i;
 
-	for (i = 0; yytext[i] != '\0'; i++)
-		if (yytext[i] == '\n')
-			column = 0;
-		else if (yytext[i] == '\t')
-			column += 8 - (column % 8);
-		else
-			column++;
+    for (i = 0; yytext[i] != '\0'; i++)
+        if (yytext[i] == '\n')
+            column = 0;
+        else if (yytext[i] == '\t')
+            column += 8 - (column % 8);
+        else
+            column++;
 
-	/*ECHO*/;
+    /*ECHO*/;
 }
 
 
@@ -1764,22 +1828,23 @@ int check_type()
 *	it actually will only return IDENTIFIER
 */
 
-	return(IDENTIFIER);
+    return(IDENTIFIER);
 }
 
+"""
+# -----------------------------------------
+# end raw lex script
+# -----------------------------------------
 
-    """
-    # -----------------------------------------
-    # end raw lex script
-    # -----------------------------------------
 
 def usage():
-    print ('%s: PyBison parser derived from %s and %s' % (sys.argv[0], bisonFile, lexFile))
-    print ('Usage: %s [-k] [-v] [-d] [filename]' % sys.argv[0])
-    print ('  -k       Keep temporary files used in building parse engine lib')
-    print ('  -v       Enable verbose messages while parser is running')
-    print ('  -d       Enable garrulous debug messages from parser engine')
-    print ('  filename path of a file to parse, defaults to stdin')
+    print('%s: PyBison parser derived from %s and %s' % (sys.argv[0], bisonFile, lexFile))
+    print('Usage: %s [-k] [-v] [-d] [filename]' % sys.argv[0])
+    print('  -k       Keep temporary files used in building parse engine lib')
+    print('  -v       Enable verbose messages while parser is running')
+    print('  -d       Enable garrulous debug messages from parser engine')
+    print('  filename path of a file to parse, defaults to stdin')
+
 
 def main(*args):
     """
@@ -1813,6 +1878,6 @@ def main(*args):
     tree = p.run(file=filename, debug=debug)
     return tree
 
+
 if __name__ == '__main__':
     main(*(sys.argv[1:]))
-
