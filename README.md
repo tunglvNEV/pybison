@@ -67,6 +67,10 @@ sudo pacman -S bison flex
 sudo apt-get install bison flex
 ```
 
+### Debugging
+
+See the short introduction into [debugging](debugging/README.md).
+
 ## Collaborators
 - PyBison was designed and written by [David McNab <david@freenet.org.nz>](http://freenet.mcnabhosting.com/python/pybison/)
 - [smvv](https://github.com/smvv)
