@@ -74,6 +74,7 @@ import distutils.log
 import distutils.sysconfig
 import distutils.ccompiler
 import subprocess
+from pathlib import Path
 from importlib import machinery
 import textwrap
 
@@ -606,9 +607,26 @@ cdef class ParserEngine:
             env.add_include_dir(distutils.sysconfig.get_python_inc())
             env.define_macro('__declspec(x)')
 
-        # -----------------------------------------
-        # Now run bison on the grammar file
-        #os.system('bison -d tmp.y')
+        # gather possible include directories from lexscript
+        included_files = [
+            l for l in
+            [l.replace("#include ", "").split("//")[0].replace("<","").replace(">", "").replace('"', '')
+             for l in parser.lexscript.strip().split("\n")
+             if l.strip().startswith("#include")]
+            if Path(l).exists()
+        ]
+
+        if parser.verbose:
+            print("Included files needed: {}".format(";".join(included_files)))
+
+        for inc_f in included_files:
+            if parser.verbose:
+                print("Copying file {} => {}".format(inc_f, buildDirectory + inc_f))
+            shutil.copy(inc_f, buildDirectory + inc_f)
+
+        # --------------------------------- #
+        # Now run bison on the grammar file #
+        # --------------------------------- #
         bisonCmd = parser.bisonCmd + [buildDirectory + parser.bisonFile]
 
         if parser.verbose:
