@@ -3,8 +3,6 @@
 A more advanced calculator example, with variable storage and scientific
 functions (courtesy of python 'math' module)
 """
-from __future__ import absolute_import
-from __future__ import print_function
 import math
 
 from bison import BisonParser
@@ -265,6 +263,16 @@ class Parser(BisonParser):
 
 
 if __name__ == '__main__':
-    p = Parser(keepfiles=0)
+    import argparse
+    parser = argparse.ArgumentParser(prog="PyBison CALC1 Example")
+    parser.add_argument("-k", "--keepfiles", action="store_true",
+                        help="Keep temporary files used in building parse engine lib")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="Enable verbose messages while parser is running")
+    parser.add_argument("-d", "--debug", action="store_true",
+                        help="Enable garrulous debug messages from parser engine")
+    args = parser.parse_args()
+
+    p = Parser(keepfiles=args.keepfiles, verbose=args.verbose)
     print("Scientific calculator example. Type 'help' for help")
-    p.run()
+    p.run(debug=args.debug)
