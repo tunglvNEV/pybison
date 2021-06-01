@@ -48,7 +48,7 @@ WIN_FLEX = join( WIN_CHOCO_DIR, 'win_flex.exe')
 WIN_BISON = join( WIN_CHOCO_DIR, 'win_bison.exe')
 
 
-__version__ = '0.4.0'
+__version__ = '0.4.1'
 __uri__ = 'https://github.com/lukeparser/pybison'
 __author__ = 'David McNab'
 __maintainer__ = 'Lukeparser Team'
