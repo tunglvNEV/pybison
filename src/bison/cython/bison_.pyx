@@ -76,8 +76,14 @@ import distutils.log
 import distutils.sysconfig
 import distutils.ccompiler
 import subprocess
-from pathlib import Path
-from importlib import machinery
+try:
+    from pathlib import Path
+except ImportError:
+    from pathlib2 import Path  # python 2 backport
+try:
+    from importlib import machinery
+except ImportError:
+    import imp  # python 2 backport
 import textwrap
 
 reSpaces = re.compile("\\s+")
@@ -126,12 +132,15 @@ cdef class ParserEngine:
         """
         self.parser = parser
 
+        if PY3:
+            _suffixes = machinery.EXTENSION_SUFFIXES[0]
+        else:
+            _suffixes = [suffix for (suffix, mode, type) in imp.get_suffixes() if type == imp.C_EXTENSION][0]
         self.libFilename_py = parser.buildDirectory \
                               + parser.bisonEngineLibName \
-                              + machinery.EXTENSION_SUFFIXES[0]
+                              + _suffixes
 
         self.parserHash = hashParserObject(self.parser)
-
 
         if parser._buildOnlyCFiles:
             self.buildLib()
@@ -204,7 +213,11 @@ cdef class ParserEngine:
     def possible_so(self, so_dir):
         LOGGER.debug("call def possible_so")
         import fnmatch
-        regex_str =  '*' + self.parser.bisonEngineLibName + machinery.EXTENSION_SUFFIXES[0]
+        if PY3:
+            _suffixes = machinery.EXTENSION_SUFFIXES[0]
+        else:
+            _suffixes = [suffix for (suffix, mode, type) in imp.get_suffixes() if type == imp.C_EXTENSION][0]
+        regex_str =  '*' + self.parser.bisonEngineLibName + _suffixes
         return [
             os.path.join(dirpath, f)
             for dirpath, dirnames, files in os.walk(so_dir)
@@ -705,8 +718,12 @@ cdef class ParserEngine:
         if parser._buildOnlyCFiles:
             return
 
+        if PY3:
+            _suffixes = machinery.EXTENSION_SUFFIXES[0]
+        else:
+            _suffixes = [suffix for (suffix, mode, type) in imp.get_suffixes() if type == imp.C_EXTENSION][0]
         libFileName = buildDirectory + parser.bisonEngineLibName \
-                      + machinery.EXTENSION_SUFFIXES[0]
+                      + _suffixes
 
         if parser.verbose:
             LOGGER.info("Compiling: {}".format(libFileName))

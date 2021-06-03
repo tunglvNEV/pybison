@@ -1,3 +1,4 @@
+# -*- encoding: utf-8 -*-
 """
 Wrapper module for interfacing with Bison (yacc)
 
@@ -30,9 +31,12 @@ import traceback
 try:
     from io import BytesIO as IO
 except:
-    from cStringIO import StringIO as IO
+    from cStringIO import StringIO as IO  # python 2 backport
 
-from os import makedirs
+try:
+    from pathlib import Path
+except ImportError:
+    from pathlib2 import Path  # python 2 backport
 
 from .bison_ import ParserEngine
 from .node import BisonNode
@@ -161,7 +165,7 @@ class BisonParser(object):
 
     lasterror = None
 
-    logging_level: int = logging.WARNING
+    logging_level = logging.WARNING
     logging_config = {
         'version': 1,
         'disable_existing_loggers': False,
@@ -219,7 +223,7 @@ class BisonParser(object):
         if self.debug:
             self.cflags_post = ['-O0', '-g'] if sys.platform.startswith('linux') else []
             shutil.rmtree(self.buildDirectory, ignore_errors=True)
-        makedirs(self.buildDirectory, exist_ok=True)
+        Path(self.buildDirectory).mkdir(parents=True, exist_ok=True)
 
         # setup
         read = kw.get('read', None)
@@ -328,10 +332,10 @@ class BisonParser(object):
         self.marker = 0
         self.engine.reset()
 
-    def parse_string(self, string):
+    def parse_string(self, string, debug=False):
         """Supply file-like object containing the string."""
         file = IO(string.encode('utf-8'))
-        return self.run(file=file)
+        return self.run(file=file, debug=debug)
 
     def parse_file(self, filename):
         """Better interface."""
@@ -367,6 +371,7 @@ class BisonParser(object):
             filename = None
             fileobj = None
 
+        debug = kw.get('read', self.debug)
         read = kw.get('read', self.read)
 
         # back up existing attributes
