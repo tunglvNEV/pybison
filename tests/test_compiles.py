@@ -167,6 +167,14 @@ class JSONParser(Parser):
 
 
 def test_parses_json():
-    j = JSONParser()
+    print("Parsing JSON")
+    j = JSONParser(verbose=True, debug=True)
+    print("JSONParser init")
     result = j.parse_string(u'{"a": 1, "b": [true, null, 1.0, "äöü"]}')
     assert result == {'a': 1, 'b': [True, None, 1.0, u'äöü']}
+    print("JSONParser result:")
+    print(result)
+
+
+if __name__ == '__main__':
+    test_parses_json()
