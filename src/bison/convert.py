@@ -79,10 +79,7 @@ def bisonToPython(bisonfileName, lexfileName, pyfileName, generateClasses=0):
 
     #prologueLines = [line.strip() for line in prologue.split('\n')]
     lines = prologue.split('\n')
-    tmp = []
-
-    for line in lines:
-        tmp.append(line.strip())
+    tmp = [l.strip() for l in lines if not l.strip().startswith("//") and len(l.strip()) != 0]
 
     prologueLines = tmp
 
