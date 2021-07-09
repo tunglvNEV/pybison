@@ -23,7 +23,7 @@ from __future__ import print_function
 import logging.config
 
 import shutil
-from os.path import dirname, join
+from os.path import join
 
 import sys
 import os
@@ -48,8 +48,8 @@ LOGGER = logging.getLogger(__name__)
 
 
 WIN_CHOCO_DIR = "C:\\ProgramData\\chocolatey\\lib\\winflexbison3\\tools\\"
-WIN_FLEX = join( WIN_CHOCO_DIR, 'win_flex.exe')
-WIN_BISON = join( WIN_CHOCO_DIR, 'win_bison.exe')
+WIN_FLEX = join(WIN_CHOCO_DIR, 'win_flex.exe')
+WIN_BISON = join(WIN_CHOCO_DIR, 'win_bison.exe')
 
 
 __version__ = '0.4.2'
