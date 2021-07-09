@@ -371,7 +371,7 @@ class BisonParser(object):
             filename = None
             fileobj = None
 
-        debug = kw.get('read', self.debug)
+        debug = kw.get('debug', self.debug)
         read = kw.get('read', self.read)
 
         # back up existing attributes
