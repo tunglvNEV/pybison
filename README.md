@@ -67,6 +67,17 @@ sudo pacman -S bison flex
 sudo apt-get install bison flex
 ```
 
+**Windows**
+
+With [Chocolatey](https://community.chocolatey.org/), you can install the packages as follows:
+```bash
+choco install winflexbison3
+```
+Additionally, if a C compiler is needed, [mingw](https://osdn.net/projects/mingw/) can be installed with Chocolatey as well.
+```bash
+choco install mingw
+```
+
 ### Debugging
 
 See the short introduction into [debugging](debugging/README.md).
