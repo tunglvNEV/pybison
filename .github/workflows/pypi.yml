@@ -135,6 +135,12 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install -r requirements.txt
           python3 -m pip install wheel setuptools
+      - name: Print platform info
+        run: |
+          uname -a
+          sw_vers
+          python3 -m platform
+          python3 -c 'import platform; print(platform.mac_ver())'
       - name: Build wheel for ${{ matrix.python-version }} on macOS
         run: python setup.py bdist_wheel
       - name: List builds
