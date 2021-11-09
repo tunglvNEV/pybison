@@ -32,7 +32,6 @@ CLASSIFIERS = [
     'Programming Language :: Python',
     'Programming Language :: Python :: 3',
     'Programming Language :: Python :: 3 :: Only',
-    'Programming Language :: Python :: 3.6',
     'Programming Language :: Python :: 3.7',
     'Programming Language :: Python :: 3.8',
     'Programming Language :: Python :: 3.9',
@@ -182,4 +181,5 @@ if __name__ == "__main__":
         py_modules=PY_MODULES,
         scripts=SCRIPTS,
         package_data={'bison': PACKAGE_DATA},
+        python_requires='>=3.7',
     )
