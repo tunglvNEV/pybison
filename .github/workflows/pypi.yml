@@ -93,9 +93,23 @@ jobs:
       - name: Set up QEMU
         if: matrix.platform == 'manylinux2014_aarch64'
         uses: docker/setup-qemu-action@v1
-      - name: Build wheel for ${{ matrix.platform }}
+      - name: Build wheel for manylinux2010_x86_64
         if: matrix.platform == 'manylinux2010_x86_64'
-        uses: RalfG/python-wheels-manylinux-build@v0.3.4-${{ matrix.platform }}
+        uses: RalfG/python-wheels-manylinux-build@v0.3.4-manylinux2010_x86_64
+        with:
+          python-versions: 'cp36-cp36m cp37-cp37m cp38-cp38 cp39-cp39'
+          build-requirements: 'six Cython'
+          system-packages: 'atlas-devel'
+      - name: Build wheel for manylinux2014_x86_64
+        if: matrix.platform == 'manylinux2014_x86_64'
+        uses: RalfG/python-wheels-manylinux-build@v0.3.4-manylinux2014_x86_64
+        with:
+          python-versions: 'cp36-cp36m cp37-cp37m cp38-cp38 cp39-cp39'
+          build-requirements: 'six Cython'
+          system-packages: 'atlas-devel'
+      - name: Build wheel for manylinux2014_aarch64
+        if: matrix.platform == 'manylinux2014_aarch64'
+        uses: RalfG/python-wheels-manylinux-build@v0.3.4-manylinux2014_aarch64
         with:
           python-versions: 'cp36-cp36m cp37-cp37m cp38-cp38 cp39-cp39'
           build-requirements: 'six Cython'
@@ -106,7 +120,7 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: python-package-distributions
-          path: dist/*${{ matrix.platform }}*.whl
+          path: dist/*manylinux*.whl
 
   build-macos:
     name: macOS (py${{ matrix.python-version }})
