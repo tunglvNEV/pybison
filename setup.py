@@ -95,9 +95,11 @@ define_macros = []
 # package_data depending on system
 if sys.platform == 'win32':
     libs = []
-    extra_link_args += ['/debug', '/Zi']
+    # extra_link_args += ['/debug', '/Zi']
     bisondynlibModule = str(Path("src") / "bison" / "c" / "bisondynlib-win32.c")
-    extra_compile_args += ['/Od', '/Zi', '-D__builtin_expect(a,b)=(a)']  # , '/DCYTHON_TRACE=1']
+    # '/Od' (Disable Optimization (Debug)): Turns off all optimizations in the program and speeds compilation.
+    # '/Zi': The /Zi option produces a separate PDB file that contains all the symbolic debugging information for use with the debugger. The debugging information isn't included in the object files or executable
+    extra_compile_args += ['-D__builtin_expect(a,b)=(a)']  # , '/Od', '/Zi', '/DCYTHON_TRACE=1']
     for root, dirs, files in os.walk(str(Path("src") / "bison" / "winflexbison")):
         PACKAGE_DATA.extend(join(root.replace(str(Path("src") / "bison") + os.path.sep, ''), f) for f in files)
 
