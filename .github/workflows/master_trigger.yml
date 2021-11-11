@@ -9,4 +9,4 @@ jobs:
   CIBW:
     uses: lukeparser/pybison/.github/workflows/cibuildwheel.yml@master
     with:
-      token: ${{ secrets.PYPI_PASSWORD }}
+      PYPI_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
