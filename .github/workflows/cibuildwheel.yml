@@ -13,6 +13,10 @@ on:
         default: true
         required: false
         type: boolean
+    secrets:
+      PYPI_PASSWORD:
+        description: "Token for pypi."
+        required: false
 
 jobs:
   auto-tag:
@@ -43,7 +47,7 @@ jobs:
     name: Deploy to PyPI
     runs-on: ubuntu-latest
     needs: [auto-tag, build-wheels]
-    if: ${{ needs.auto-tag.outputs.sha && inputs.deploy }}
+    if: ${{ needs.auto-tag.outputs.sha && inputs.deploy && secrets.PYPI_PASSWORD }}
     steps:
       - name: Download all the dists
         uses: actions/download-artifact@v2
@@ -148,6 +152,7 @@ jobs:
           path: ./dist/*tar.gz
 
       - name: Publish to PyPI
+        if: ${{ needs.auto-tag.outputs.sha && inputs.deploy && secrets.PYPI_PASSWORD }}
         uses: pypa/gh-action-pypi-publish@master
         with:
           skip_existing: true
