@@ -132,6 +132,12 @@ jobs:
       - name: Build sdist
         run: python3 setup.py sdist
 
+      - name: Store source distribution
+        uses: actions/upload-artifact@v2
+        with:
+          name: wheels
+          path: ./dist/*tar.gz
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@master
         with:
