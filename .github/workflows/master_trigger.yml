@@ -8,5 +8,5 @@ on:
 jobs:
   CIBW:
     uses: lukeparser/pybison/.github/workflows/cibuildwheel.yml@master
-    with:
+    secrets:
       PYPI_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
