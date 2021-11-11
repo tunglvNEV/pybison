@@ -1,0 +1,15 @@
+name: Test build wheels
+
+on:
+  push:
+    branches:
+      - '*'
+      - '!master'
+      - '!main'
+
+jobs:
+  CIBW:
+    uses: lukeparser/pybison/.github/workflows/cibuildwheel.yml@dev-setup
+    with:
+      fail-fast: false
+      deploy: false
