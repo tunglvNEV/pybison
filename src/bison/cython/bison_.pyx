@@ -642,6 +642,7 @@ cdef class ParserEngine:
         proc = subprocess.Popen(' '.join(bisonCmd), stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         (out, err) = proc.communicate()
         if proc.returncode:
+            LOGGER.error(out)
             raise Exception(err)
 
         if parser.verbose:
