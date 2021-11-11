@@ -95,28 +95,28 @@ jobs:
 
       - name: Install cibuildwheel
         run: |
-          python3 -m pip install cibuildwheel==2.2.2
+          python -m pip install cibuildwheel==2.2.2
 
       - name: Build wheels for CPython 3.10
         run: |
-          python3 -m cibuildwheel --output-dir dist
+          python -m cibuildwheel --output-dir dist
         env:
           CIBW_BUILD: "cp310-*"
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_24
           CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_24
           CIBW_BEFORE_ALL_LINUX: apt-get update && apt-get --yes --allow-downgrades --allow-remove-essential install libatlas-base-dev
-          CIBW_BEFORE_BUILD: python3 -m pip install -U pip && python3 -m pip install -r requirements.txt
+          CIBW_BEFORE_BUILD: python -m pip install -U pip && python -m pip install -r requirements.txt
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
 
       - name: Build wheels for CPython 3.7 / 3.8 / 3.9
         run: |
-          python3 -m cibuildwheel --output-dir dist
+          python -m cibuildwheel --output-dir dist
         env:
           CIBW_BUILD: "cp37-* cp38-* cp39-*"
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
           CIBW_MANYLINUX_AARCH64_IMAGE: manylinux2014
           CIBW_BEFORE_ALL_LINUX: yum install -y atlas-devel
-          CIBW_BEFORE_BUILD: python3 -m pip install -U pip && python3 -m pip install -r requirements.txt
+          CIBW_BEFORE_BUILD: python -m pip install -U pip && python -m pip install -r requirements.txt
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
 
       - uses: actions/upload-artifact@v2
@@ -138,11 +138,11 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install -r requirements.txt
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
 
       - name: Build sdist
-        run: python3 setup.py sdist
+        run: python setup.py sdist
 
       - name: Store source distribution
         uses: actions/upload-artifact@v2
