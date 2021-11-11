@@ -1,0 +1,10 @@
+name: CI build
+
+on:
+  push:
+    branches:
+      - 'master'
+
+jobs:
+  CIBW:
+    uses: lukeparser/pybison/.github/workflows/cibuildwheel.yml@master
