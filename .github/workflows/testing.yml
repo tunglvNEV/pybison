@@ -9,7 +9,7 @@ on:
 
 jobs:
   CIBW:
-    uses: lukeparser/pybison/.github/workflows/cibuildwheel.yml@dev-setup
+    uses: lukeparser/pybison/.github/workflows/cibuildwheel.yml@master
     with:
       fail-fast: false
       deploy: false
