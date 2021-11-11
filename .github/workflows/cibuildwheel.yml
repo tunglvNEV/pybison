@@ -13,6 +13,9 @@ on:
         default: true
         required: false
         type: boolean
+  push:
+    branches:
+      - master
 
 jobs:
   auto-tag:
