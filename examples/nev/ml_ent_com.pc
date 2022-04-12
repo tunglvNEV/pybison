@@ -1,0 +1,1332 @@
+/* ======================================================================== */
+/*	コベルコ建機様向け用　稼動機管理システム								*/
+/*	受信メールテキストデータ→DB変換　共通関数								*/
+/*	ファイル名	：	ml_ent_com.pc											*/
+/*	説明		：	共通関数を定義する										*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2009.02.01												*/
+/*	更新	SKCS	2009.07.01	文字項目の桁溢れ対応(ORA-12899対応)			*/
+/*			KSC 	2011.10.25	ミニ流用：国外／オーブコム２対応			*/
+/*																			*/
+/* ======================================================================== */
+
+/* ------------------------------------------------------------------------ */
+/*	インクルードヘッダ定義													*/
+/* ------------------------------------------------------------------------ */
+#include	<stdio.h>
+#include	<stdlib.h>
+#include	<string.h>
+#include	<ctype.h>
+#include	<errno.h>
+#include	<err.h>
+#include	<time.h>
+#include	<dirent.h>
+
+#include	<syslog.h>
+
+#include	<sys/stat.h>
+#include	<sys/types.h>
+#include	<fcntl.h>
+#include	<sys/ipc.h>
+#include	<sys/msg.h>
+
+#include	<syslog.h>
+#include	<stdarg.h>
+
+#include	<sqlca.h>
+
+EXEC SQL BEGIN DECLARE SECTION;
+#include	"merit_bat.h"				/*	共通ヘッダ						*/
+EXEC SQL END DECLARE SECTION;
+
+/* ------------------------------------------------------------------------ */
+/*	定数の定義																*/
+/* ------------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------------ */
+/*	関数プロトタイプ宣言													*/
+/* ------------------------------------------------------------------------ */
+char	*itc_strdup(const char *);
+void	itc_free(char **ptr);
+varchar *vcstrncpy(varchar *s1, const char *s2, size_t n);
+
+
+/* ------------------------------------------------------------------------ */
+/*	外部シンボル参照宣言													*/
+/* ------------------------------------------------------------------------ */
+extern PROC_COM_PARAM	G_PROC_COM_PARAM;
+extern CMD_COM_PARAM	G_CMD_COM_PARAM;
+
+/* ------------------------------------------------------------------------ */
+/*	グローバル変数の宣言													*/
+/* ------------------------------------------------------------------------ */
+int alloc_count = 0;
+void *G_ALLOC_POINT[MAX_MAIL_LINE * MAX_CMD_PARAM];
+
+char *itc_strdup(const char *s){
+	char *_p;
+	
+	alloc_count ++;
+	_p = strdup(s);
+	addAlloc_point(_p);
+	return _p;
+}
+	
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	resetAlloc_point											*/
+/*	機能	:	メモリ解放用アドレス保持配列へを初期化する					*/
+/*	関数型	:	int															*/
+/*	呼出形式:	resetAlloc_point()											*/
+/*	戻り値	:																*/
+/*	引数	:																*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2008.12.17												*/
+/*	更新																	*/
+/* ------------------------------------------------------------------------ */
+void	resetAlloc_point()
+{
+	int i = 0;
+	for(i=0;i<MAX_MAIL_LINE * MAX_CMD_PARAM;i++){
+		G_ALLOC_POINT[i] = NULL;
+	}
+}
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	addAlloc_point												*/
+/*	機能	:	メモリ解放用アドレス保持配列へポインタを設定する			*/
+/*	関数型	:	int															*/
+/*	呼出形式:	addAlloc_point()											*/
+/*	戻り値	:	0 正常	-xx 異常											*/
+/*	引数	:																*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2008.12.17												*/
+/*	更新																	*/
+/* ------------------------------------------------------------------------ */
+int		addAlloc_point(void *p)
+{
+	int i = 0;
+	int ret = -1;
+	
+	
+	for(i=0;i<MAX_MAIL_LINE * MAX_CMD_PARAM;i++){
+		if(NULL == G_ALLOC_POINT[i]){
+			G_ALLOC_POINT[i] = p;
+#ifdef DEBUG
+			printf("[%s][Line:%04d][%s]\n", __FUNCTION__,__LINE__,G_ALLOC_POINT[i]);
+#endif
+			ret = i;
+			break;
+		}
+	}
+	return ret;
+}
+
+int		setAlloc_point(int indx,void *p)
+{
+	G_ALLOC_POINT[indx] = p;
+	return indx;
+}
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	freeAlloc_point												*/
+/*	機能	:	メモリ解放を行う											*/
+/*	関数型	:	int															*/
+/*	呼出形式:	freeAlloc_point()											*/
+/*	戻り値	:	0 正常	-xx 異常											*/
+/*	引数	:																*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2008.12.17												*/
+/*	更新																	*/
+/* ------------------------------------------------------------------------ */
+int		freeAlloc_point(){
+	int i = 0;
+	#ifdef DEBUG
+	printf("[%s][Line:%04d]freeAlloc_point\n", __FUNCTION__,__LINE__);
+	#endif
+	for(i=0;i<MAX_MAIL_LINE * MAX_CMD_PARAM;i++){
+		if(NULL != G_ALLOC_POINT[i]){
+			free(G_ALLOC_POINT[i]);
+			G_ALLOC_POINT[i] = NULL;
+			alloc_count --;
+		}
+	}
+	free_cmd_param();
+}
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	output_sys_err												*/
+/*	機能	:	シスログに出力を行う										*/
+/*	関数型	:	void														*/
+/*	戻り値	:	0 正常	-xx 異常											*/
+/*	引数	:	function_nm		char*	呼び出し元関数名					*/
+/*				file_nm			char*	呼び出し元ソースファイル名			*/
+/*				line_no			int		呼び出し元ソースファイル行番号		*/
+/*				msg				char*	出力メッセージ						*/
+/*				seq				int		処理中メール連番					*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2009.01.14												*/
+/*	更新																	*/
+/* ------------------------------------------------------------------------ */
+int		output_sys_err(const char *function_nm,char *file_nm,int line_no
+						,char *msg,int seq){
+	
+	syslog(LOG_ERR, "E-00:file=[%s] function=[%s] line=[%d] message=[%s] seq=[%d]\n",
+			file_nm,
+			function_nm,
+			line_no,
+			msg,
+			seq
+	);
+	output_ap_err(function_nm,file_nm,line_no,msg);
+}
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	output_sys_info												*/
+/*	機能	:	シスログに出力を行う										*/
+/*	関数型	:	void														*/
+/*	戻り値	:	0 正常	-xx 異常											*/
+/*	引数	:	function_nm		char*	呼び出し元関数名					*/
+/*				file_nm			char*	呼び出し元ソースファイル名			*/
+/*				line_no			int		呼び出し元ソースファイル行番号		*/
+/*				msg				char*	出力メッセージ						*/
+/*				seq				int		処理中メール連番					*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2009.01.14												*/
+/*	更新																	*/
+/* ------------------------------------------------------------------------ */
+int		output_sys_info(const char *function_nm,char *file_nm,int line_no
+						,char *msg,int seq){
+	
+	syslog(LOG_INFO, "I-00:%s(file=[%s] function=[%s] line=[%d] seq=[%d])\n",
+			msg,
+			file_nm,
+			function_nm,
+			line_no,
+			seq
+	);
+	output_ap_err(function_nm,file_nm,line_no,msg);
+}
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	output_ap_err												*/
+/*	機能	:	エラーログ登録処理（アプリケーションエラー）				*/
+/*	関数型	:	int															*/
+/*	戻り値	:	0 正常	-xx 異常											*/
+/*	引数	:	function_nm		char*	呼び出し元関数名					*/
+/*				file_nm			char*	呼び出し元ソースファイル名			*/
+/*				line_no			int		呼び出し元ソースファイル行番号		*/
+/*				msg				char*	出力メッセージ						*/
+/*				seq				int		処理中メール連番					*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2009.01.14												*/
+/*	更新																	*/
+/* ------------------------------------------------------------------------ */
+int		output_ap_err(const char *function_nm,char *file_nm,int line_no
+											,char *msg)
+{
+	char		logfname[1024];			/*	ログファイル名					*/
+	char		op_mode[5];				/*	ファイルのアクセスモード		*/
+	struct stat	buf;					/*	ファイル情報格納構造体			*/
+	int			existflg;				/*	ファイルの存在判定フラグ		*/
+	time_t		ti;						/*	現在日時情報					*/
+	struct tm	*p_tm1;					/*	現在日時情報					*/
+	struct tm	*p_tm2;					/*	ファイル更新日時情報			*/
+	struct tm	tmbuf;
+	FILE		*fp;					/*	ファイルアクセス構造体			*/
+
+	/*	現在日時獲得														*/
+	ti = time( NULL );
+	p_tm2 = localtime( &ti );
+	memcpy( &tmbuf, p_tm2, sizeof( struct tm ) );
+
+	/*	ログファイル名作成													*/
+	sprintf( logfname, "%s%s_%02d.log", APLOG_DIR,G_PROC_COM_PARAM.exec_proc, p_tm2->tm_mon+1 );
+
+	/*	ファイル存在チェック												*/
+	if( NULL == ( fp = fopen( logfname, "r" ) ) ){
+		existflg = 0;					/*	ファイルが存在しない			*/
+	} else {
+		existflg = 1;					/*	ファイルが存在する				*/
+		fclose( fp );
+	}
+
+	/*	ファイルのオープンは基本「追加」									*/
+	strcpy( op_mode, "a" );
+	/*	ファイルが存在する場合												*/
+	if( 1 == existflg ){
+		if( -1 == stat( logfname, &buf ) ){
+			return( 1 );
+		}
+		/*	ファイルの最終更新日時を獲得して現在日時と比較					*/
+		p_tm1 = localtime( &(buf.st_mtime) );
+		if( p_tm1->tm_year < tmbuf.tm_year ){
+			/*	ただし、最終更新が昨年以前であれば、上書き					*/
+			strcpy( op_mode, "w" );
+		}
+	}
+	/*	ログファイルを開き、出力											*/
+	if( NULL != ( fp = fopen( logfname, op_mode ) ) ){
+		fprintf( fp, "%04d/%02d/%02d %02d:%02d:%02d %20s(%d):%-20s TEXTFILE[%s] EQUIP_NO[%s] MAIL ADDRESS[%s] SEQ[%d] %s\n",
+					tmbuf.tm_year+1900,
+					tmbuf.tm_mon+1,
+					tmbuf.tm_mday,
+					tmbuf.tm_hour,
+					tmbuf.tm_min,
+					tmbuf.tm_sec,
+					file_nm,
+					line_no,
+					function_nm,
+					G_CMD_COM_PARAM.mail_file_nm,
+					G_CMD_COM_PARAM.equip_no,
+					G_CMD_COM_PARAM.from_mailaddr,
+					G_CMD_COM_PARAM.seq,
+					msg
+		);
+		fclose( fp );
+
+		#ifdef DEBUG
+		printf( "%04d/%02d/%02d %02d:%02d:%02d %s(%d):%s TEXTFILE[%s] EQUIP_NO[%s] MAIL ADDRESS[%s] SEQ[%d] %s\n",
+					tmbuf.tm_year+1900,
+					tmbuf.tm_mon+1,
+					tmbuf.tm_mday,
+					tmbuf.tm_hour,
+					tmbuf.tm_min,
+					tmbuf.tm_sec,
+					file_nm,
+					line_no,
+					function_nm,
+					G_CMD_COM_PARAM.mail_file_nm,
+					G_CMD_COM_PARAM.equip_no,
+					G_CMD_COM_PARAM.from_mailaddr,
+					G_CMD_COM_PARAM.seq,
+					msg );
+		#endif
+
+	}
+
+	return( 0 );
+}
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	crelockfile													*/
+/*	機能	:	多重起動防止用排他制御ファイルの作成						*/
+/*	関数型	:	int															*/
+/*	呼出形式:	crelockfile( char* p_filename, int* p_lockfd )				*/
+/*	戻り値	:	0 正常	-1 異常												*/
+/*	引数	:	char*	p_filename	LOCKファイル名へのポインタ				*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2009.01.14												*/
+/*	更新	SKCS	2009.02.01	krossから流用								*/
+/* ------------------------------------------------------------------------ */
+int		crelockfile( char* p_filename, int* p_lockfd )
+{
+	char	errmsg[2048];				/*	エラーメッセージ				*/
+
+	/*	ファイルを開く														*/
+	*p_lockfd = open( p_filename, O_RDWR|O_CREAT, 0600 );
+	if( -1 == *p_lockfd ){
+		sprintf( errmsg, "ロックファイル[%s]をオープンできませんでした。", p_filename );
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__, errmsg ,G_CMD_COM_PARAM.seq);
+		return( -1 );
+	}
+	/*	ファイルロック														*/
+	if( -1 == flock( *p_lockfd, LOCK_EX|LOCK_NB ) ){
+		if( EWOULDBLOCK == errno ){
+			close( *p_lockfd );
+			return( 1 );
+		} else {
+			sprintf( errmsg, "ロックファイル[%s]をロックできませんでした。[%ld]", p_filename, errno );
+			output_sys_err(__FUNCTION__,__FILE__, __LINE__, errmsg ,G_CMD_COM_PARAM.seq);
+			return( -1 );
+		}
+	}
+	/*	正常終了															*/
+	return( 0 );
+}
+
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	getmail_info												*/
+/*	機能	:	メールヘッダの情報を取得する								*/
+/*	関数型	:	int															*/
+/*	呼出形式:	getmail_info( MAIL_INFO* p_mailinfo, FILE* p_fp, int fsize)*/
+/*	戻り値	:	0 正常	-1	異常											*/
+/*	引数	:	MAIL_INFO*	p_mailinfo	メールヘッダ情報格納域へのポインタ	*/
+/*				FILE**		p_fp		ファイル参照構造体へのポインタ		*/
+/*				int			fsize		ファイルサイズ						*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2009.02.01												*/
+/*	更新																	*/
+/* ------------------------------------------------------------------------ */
+int		get_mail_info( MAIL_INFO* p_mailinfo, FILE** p_fp, int fsize )
+{
+	char	*p_buf;						/*	ファイル読み込み域へのポインタ	*/
+	char	*p_bufbak;					/*	ファイル読み込み域へのポインタ	*/
+	char	*p_prm;						/*	件名内の各パラメータ参照用		*/
+	int		i;							/*	カウンタ変数					*/
+	int		slen;						/*	文字列長さ						*/
+	int		ret;						/*	戻り値							*/
+	char	errmsg[1024];				/*	エラーメッセージ				*/
+	char	kwdbuf[100];				/*	小文字変換ワーク				*/
+	char	msgbuf[1024];				/*	小文字変換ワーク				*/
+	int		mode;						/*	解析モード(1:ヘッダ、2:本文)	*/
+	static char	*p_headtype[] = {		/*	メールヘッダのキーワードテーブル*/
+		MAIL_TKN_HEADER_FROM, MAIL_TKN_HEADER_TO, MAIL_TKN_MESSAGE_ID, ""
+	};
+	/*	2009.03.27 postfix(deliveredは不要だが残す) */
+	static char	*p_bodytype[] = {		/*	メール本文のキーワードテーブル*/
+		MAIL_TKN_BODY_TO , ""
+	};
+	
+	/*	メールヘッダから解析開始											*/
+	mode = 1;
+
+	/*	ファイル読み込みバッファの確保										*/
+	p_buf = ( char* )malloc( sizeof( char )*fsize );
+	if( NULL == p_buf ){
+		sprintf( errmsg, "ファイル読み込みメモリの確保に失敗しました。size=[%d]"
+													,fsize );
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__, errmsg ,G_CMD_COM_PARAM.seq);
+		return( -1 );
+	}
+	p_bufbak = p_buf;
+	/*	ファイル読み込み													*/
+	while( NULL != fgets( p_buf, fsize, *p_fp ) ){
+		/*if( feof( *p_fp ) ){			/*	EOF?							*/
+		/*	break;*/
+		/*}*/
+		if(1 == mode){
+			if(strlen(p_mailinfo->header) + strlen(p_buf) <= HEADER_MAX_LEN){
+				strcat(p_mailinfo->header,p_buf);
+			}
+		}else{
+			if(strlen(p_mailinfo->body) + strlen(p_buf) <= BODY_MAX_LEN){
+				strcat(p_mailinfo->body,p_buf);
+			}
+		}
+		
+		remove_crlf( p_buf );					/*	改行コードを削除		*/
+		
+		/*	ヘッダ部終了?													*/
+		if(1 == mode && 0 == strlen( p_buf )){
+			/*	メール本文解析に移行	*/
+			mode = 2;
+		}
+		/*	メールヘッダ解析中の場合	*/
+		i = 0;
+		ret = 0;
+		while( mode == 1 ){
+			slen = strlen( p_headtype[i] );
+			if( 0 == slen ){
+				break;
+			}
+#ifdef DEBUG
+printf("[%s]Head：search[%s]\n", __FUNCTION__ ,p_headtype[i] );
+#endif
+
+			/*	該当ヘッダ情報名あり？										*/
+			if( !mic_strnicmp( p_buf, p_headtype[i], strlen( p_headtype[i] ) ) ){
+				switch( i ){
+					case	0:			/*	From							*/
+						if( MAIL_ADDR_MAX_LEN >= strlen(p_buf+slen) ){
+							strcpy( p_mailinfo->from_mailaddr, p_buf+slen);
+						} else {
+							sprintf( errmsg, "メールヘッダのFromの長さが規定値を超えています");
+							output_ap_err(__FUNCTION__,__FILE__, __LINE__, errmsg );
+							ret = -1;
+						}
+#ifdef DEBUG
+printf("[%s]from[%s] found!!\n", __FUNCTION__ ,p_mailinfo->from_mailaddr );
+#endif
+						break;
+					case	1:			/*	To								*/
+						if( MAIL_ADDR_MAX_LEN >= strlen(p_buf+slen) ){
+							strcpy( p_mailinfo->to_mailaddr, p_buf+slen);
+						} else {
+							sprintf( errmsg, "メールヘッダのToの長さが規定値を超えています");
+							output_ap_err(__FUNCTION__,__FILE__, __LINE__, errmsg );
+							ret = -1;
+						}
+#ifdef DEBUG
+printf("[%s]to[%s] found!!\n", __FUNCTION__  ,p_mailinfo->to_mailaddr);
+#endif
+						break;
+					case	2:			/*	Message-ID						*/
+						if( MESSAGE_ID_LEN >= strlen(p_buf+slen) ){
+							strcpy( p_mailinfo->message_id, p_buf+slen);
+						} else {
+							sprintf( errmsg, "メッセージＩＤの長さが規定値を超えています");
+							output_ap_err(__FUNCTION__,__FILE__, __LINE__, errmsg );
+							ret = -1;
+						}
+#ifdef DEBUG
+printf("[%s]to[%s] found!!\n", __FUNCTION__  ,p_mailinfo->message_id);
+#endif
+						break;
+					default:			/*	処理対象外						*/
+						break;
+				}
+			}
+			i++;
+		}
+		if( ret ){						/*	異常発生？						*/
+			break;						/*	取得処理を終わる				*/
+		}
+
+		/*	メール本文解析中の場合	*/
+		i = 0;
+		ret = 0;
+		while( mode == 2 ){
+			slen = strlen( p_bodytype[i] );
+			if( 0 == slen ){
+				break;
+			}
+#ifdef DEBUG
+printf("[%s]body：search[%s]\n", __FUNCTION__ ,p_bodytype[i] );
+#endif
+			/* NG-Mail系の処理は、部分一致を許可する */
+			/* User unknown */
+			if(NULL != strstr(p_buf,MAIL_TKN_NG_USER_UNKNOWN)){
+				p_mailinfo->no_mailbox = 1;
+			}
+			/* NC status NG */
+			if(NULL != strstr(p_buf,MAIL_TKN_NG_NC_STATUS_NG)){
+				p_mailinfo->nc_status_ng = 1;
+			}
+			
+			/*	該当本文情報あり？											*/
+			if( !mic_strnicmp( p_buf, p_bodytype[i], strlen( p_bodytype[i] ) ) ){
+				switch( i ){
+					case	0:			/*	To								*/
+						if( MAIL_ADDR_MAX_LEN >= strlen(p_buf+slen) ){
+							strcpy( p_mailinfo->body_to_mailaddr, p_buf+slen);
+						} else {
+							sprintf( errmsg, "メール本文のToの長さが規定値を超えています");
+							output_ap_err(__FUNCTION__,__FILE__, __LINE__, errmsg );
+							ret = -1;
+						}
+#ifdef DEBUG
+printf("[%s]BODY TO[%s] found!!\n", __FUNCTION__  ,p_mailinfo->body_to_mailaddr);
+#endif
+						break;
+					default:			/*	処理対象外						*/
+						break;
+				}
+			}
+			i++;
+		}
+		if( ret ){						/*	異常発生？						*/
+			break;						/*	取得処理を終わる				*/
+		}
+
+	}
+
+	/*	ファイルデータ参照メモリの開放										*/
+	free( p_bufbak );
+	/*	処理結果を返す														*/
+	return( ret );
+}
+
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	mic_strnicmp												*/
+/*	機能	:	２つの文字列比較（大小文字判定なし）						*/
+/*	関数型	:	int															*/
+/*	呼出形式:	mic_strnicmp( char* p_s1, char* p_s2, int chklen )			*/
+/*	戻り値	:	0 一致	0以外 不一致										*/
+/*	引数	:	char*	p_s1	比較文字列へのポインタ						*/
+/*				char*	p_s2	比較文字列へのポインタ						*/
+/*				int		chklen	比較するバイト数							*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2006.06.30												*/
+/*	更新	SKCS	2009.02.01	krossから流用								*/
+/* ------------------------------------------------------------------------ */
+int		mic_strnicmp( char* p_s1, char* p_s2, int chklen )
+{
+	int		c1;							/*	１文字のキャラクタ				*/
+	int		c2;							/*	１文字のキャラクタ				*/
+	int		i;							/*	ループカウンタ					*/
+	int		ret;						/*	戻り値							*/
+
+	ret = 0;							/*	戻り値初期化（一致）			*/
+	for( i=0; i<chklen; i++ ){
+		c1 = toupper( *( p_s1+i ) );	/*	第一引数側の１文字獲得			*/
+		c2 = toupper( *( p_s2+i ) );	/*	第二引数側の１文字獲得			*/
+
+		if( c1 != c2 ){					/*	不一致？						*/
+			ret = 1;					/*	戻り値を[不一致]に変更			*/
+			break;
+		}
+	}
+	/*	比較結果を返す														*/
+	return( ret );
+}
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	remove_crlf													*/
+/*	機能	:	バッファ中のCRLFを削除										*/
+/*	関数型	:	int															*/
+/*	呼出形式:	remove_crlf( char* p_data )									*/
+/*	戻り値	:	常に0														*/
+/*	引数	:	char*	p_data	対象文字列へのポインタ						*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2006.06.30												*/
+/*	更新	SKCS	2009.02.01	krossから流用								*/
+/* ------------------------------------------------------------------------ */
+int		remove_crlf( char* p_data )
+{
+	char*	p_cr;						/*	X'0D'検索用ポインタ				*/
+	char*	p_lf;						/*	X'0A'検索用ポインタ				*/
+
+	/*	X'0D'を探し、見つかれば削除											*/
+	p_cr = strchr( p_data, 0x0d );
+	if( NULL != p_cr ){
+		*p_cr = '\0';
+	}
+	/*	X'0A'を探し、見つかれば削除											*/
+	p_lf = strchr( p_data, 0x0a );
+	if( NULL != p_lf ){
+		*p_lf = '\0';
+	}
+	/*	常に正常終了を返す													*/
+	return( 0 );
+}
+
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	getfilelist													*/
+/*	機能	:	所定のディレクトリに配置されたファイル名一覧を取得する		*/
+/*	関数型	:	int															*/
+/*	呼出形式:	getfilelist( char* p_dir, char* p_filename )				*/
+/*	戻り値	:	ファイルの件数（-1はエラー）								*/
+/*	引数	:	char*	p_dir		ディレクトリ名へのポインタ				*/
+/*				char*	p_fname	ファイル名格納域							*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2006.06.02												*/
+/*	更新	SKCS	2009.02.01	krossから流用								*/
+/* ------------------------------------------------------------------------ */
+int		getfilelist( char* p_dir, char *p_filename )
+{
+	char	*p_fname;					/*	ファイル名中の拡張子参照ポインタ*/
+	char	wrk[1024];					/*	ファイル名フルパス作成域		*/
+	DIR		*p_dirinf;					/*	ディレクトリ情報参照構造体		*/
+	struct dirent	*p_dirent;			/*	*/
+	struct stat		finf;				/*	*/
+	char	errmsg[1024];				/*	*/
+	time_t	t = 0;						/*	*/
+	int		ret;						/*	*/
+	
+#ifdef DEBUG
+printf("[%s]getfilelist target[%s]\n", __FUNCTION__  ,p_dir);
+#endif
+
+	/*	ディレクトリを開く													*/
+	if( NULL == ( p_dirinf = opendir( p_dir ) ) ){
+		sprintf( errmsg, "処理対象ファイルのディレクトリ参照でエラーが発生しました。");
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__, errmsg ,G_CMD_COM_PARAM.seq);
+		return( -1 );
+	}
+	ret = 0;
+	while( NULL != ( p_dirent = readdir( p_dirinf ) ) ){
+		if( strlen(p_dirent->d_name) > 4 ){
+			p_fname = p_dirent->d_name;
+			p_fname += ( strlen( p_dirent->d_name ) - 4);
+			if( !strcmp( p_fname, ".dat" ) ){
+				/*	ファイルの更新日付取得									*/
+				sprintf( wrk, "%s%s", p_dir, p_dirent->d_name );
+				stat( wrk, &finf );
+				if( 0 == t ){
+					strcpy( p_filename, p_dirent->d_name );
+					ret = 1;
+					t = finf.st_mtime;
+				} else {
+					if( t > finf.st_mtime ){
+						strcpy( p_filename, p_dirent->d_name );
+						t = finf.st_mtime;
+						ret = 1;
+					}
+				}
+			}
+		}
+	}
+	closedir( p_dirinf );
+
+	return( ret );
+}
+
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	movefile													*/
+/*	機能	:	処理対象のテキストファイルを処理時のディレクトリへ移動		*/
+/*	関数型	:	int															*/
+/*	呼出形式:	movefile( char* p_srcdir, char* p_dstdir, char* p_infile )	*/
+/*	戻り値	:	-1 異常終了		0 正常終了									*/
+/*	引数	:	char*	p_srcdir	テキストファイル配置ディレクトリ名		*/
+/*				char*	p_dstdir	テキストファイル移動先ディレクトリ名	*/
+/*				char*	p_infile	テキストファイル名						*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2006.06.02												*/
+/*	更新	SKCS	2009.02.01	krossから流用								*/
+/* ------------------------------------------------------------------------ */
+int		movefile( char* p_srcdir, char* p_dstdir, char* p_infile )
+{
+	char	srcfname[DIR_NAME_MAX+1];	/*	移動元ファイル名				*/
+	char	dstfname[DIR_NAME_MAX+1];	/*	移動先ファイル名				*/
+	char	errmsg[2048];				/*	エラーメッセージ				*/
+
+#ifdef DEBUG
+printf("[%s]SRCdir = [%s]\n", __FUNCTION__, p_srcdir );
+printf("[%s]DSTdir = [%s]\n", __FUNCTION__, p_dstdir );
+printf("[%s]Filename = [%s]\n", __FUNCTION__, p_infile );
+#endif
+	/*	入力側ファイル名													*/
+	strcpy( srcfname, p_srcdir );
+	strcat( srcfname, p_infile );
+#ifdef DEBUG
+printf("[%s]SRCFile = %s\n", __FUNCTION__, srcfname );
+#endif
+
+	/*	出力側ファイル名													*/
+	strcpy( dstfname, p_dstdir );
+	strcat( dstfname, p_infile );
+#ifdef DEBUG
+printf("[%s]DSTFile = %s\n", __FUNCTION__, dstfname );
+#endif
+
+	/*	ファイル名変更														*/
+	if( -1 == rename( srcfname, dstfname ) ){
+		sprintf( errmsg, "処理対象ファイルの移動に失敗しました。[%ld]:[%s]=>[%s]"
+													,errno, srcfname, dstfname );
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__, errmsg ,G_CMD_COM_PARAM.seq);
+		return( -1 );
+	}
+
+	/*	正常終了															*/
+	return( 0 );
+}
+
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	unlock_itc_info												*/
+/*	機能	:	ITC関連レコードをアンロックします。							*/
+/*	関数型	:	int															*/
+/*	呼出形式:	unlock_itc_info()									*/
+/*	戻り値	:	-2 異常(DB異常)		-1 異常(継続不可)	0 正常終了 			*/
+/*				 1 警報(継続可能) 											*/
+/*				 2 警報(継続可能(呼び出し元でシスログ出力不要))				*/
+/*	引数	:																*/
+/*																			*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2012.06.07												*/
+/*	更新																	*/
+/* ------------------------------------------------------------------------ */
+int		unlock_itc_info(){
+#ifdef DEBUG
+printf("[%s][Line:%04d]該当ITCの関連レコードをロック解除。\n",__FUNCTION__,__LINE__);
+#endif
+	EXEC SQL AT :AT_DBCON_1 ROLLBACK;
+#ifdef DEBUG
+printf("[%s][Line:%04d]該当ITCの関連レコードをロック解除 - OK。\n",__FUNCTION__,__LINE__);
+#endif
+    return 0;
+}
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	lock_itc_info												*/
+/*	機能	:	ITC関連レコードをロックします。								*/
+/*	関数型	:	int															*/
+/*	呼出形式:	lock_itc_info(MAIL_INFO*)									*/
+/*	戻り値	:	-2 異常(DB異常)		-1 異常(継続不可)	0 正常終了 			*/
+/*				 1 警報(継続可能) 											*/
+/*				 2 警報(継続可能(呼び出し元でシスログ出力不要))				*/
+/*	引数	:	メール情報構造の定義										*/
+/*																			*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2012.06.07												*/
+/*	更新																	*/
+/* ------------------------------------------------------------------------ */
+int		lock_itc_info(MAIL_INFO* m_info){
+
+    char    errmsg[ORA_ERR_MSG_MAX_LEN + 1];
+    int     msglen;
+    int     buflen;
+
+	EXEC SQL BEGIN DECLARE SECTION;
+		varchar		from_mailaddr[MAIL_ADDR_MAX_LEN + 1];	/*	ヘッダFromアドレス	*/
+	EXEC SQL END DECLARE SECTION;
+
+	strcpy( from_mailaddr.arr, m_info->from_mailaddr);
+	from_mailaddr.len = strlen(m_info->from_mailaddr);
+
+	EXEC SQL WHENEVER SQLERROR GOTO sql_error;
+#ifdef DEBUG
+printf("[%s][Line:%04d]該当ITC[%s]の関連レコードをロック実施。\n",__FUNCTION__,__LINE__,from_mailaddr.arr);
+#endif
+	EXEC SQL AT :AT_DBCON_1 EXECUTE
+		BEGIN
+			ITC.LOCK_ITC_INFO(:from_mailaddr);
+		END;
+	END-EXEC;	
+
+#ifdef DEBUG
+printf("[%s][Line:%04d]該当ITC[%s]の関連レコードをロック-OK。\n",__FUNCTION__,__LINE__,from_mailaddr.arr);
+#endif
+
+	return( 0 );
+
+sql_error:
+
+    /*  エラーメッセージ取得  */
+    buflen = ORA_ERR_MSG_MAX_LEN;
+    sqlglm( errmsg, &buflen, &msglen );
+    errmsg[msglen] = '\0';
+	
+	sprintf(G_CMD_COM_PARAM.err_msg,"ITC関連レコードのロック処理が失敗しました[%s]",errmsg);
+
+#ifdef DEBUG
+printf("[%s][Line:%04d]ITC関連レコードのロック処理が失敗しまし[%s]\n",__FUNCTION__,__LINE__,errmsg);
+#endif
+
+    /*  エラーコード判定結果取得  */
+    return( chk_oraerr( sqlca.sqlcode ) );
+}
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	addmaillog													*/
+/*	機能	:	ログ出力を行う。メンテ系、通常系の判定を行う。				*/
+/*				メンテ系の場合は、メンテ系ログテーブル。					*/
+/*				通常系の場合は、ログテーブルに対して追加を行う。			*/
+/*	関数型	:	int															*/
+/*	呼出形式:	addmaillog(MAIL_INFO*)										*/
+/*	戻り値	:	-2 異常(DB異常)		-1 異常(継続不可)	0 正常終了 			*/
+/*				 1 警報(継続可能) 											*/
+/*				 2 警報(継続可能(呼び出し元でシスログ出力不要))				*/
+/*	引数	:	メール情報構造の定義										*/
+/*																			*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2009.02.01												*/
+/*	更新																	*/
+/* ------------------------------------------------------------------------ */
+int		addmaillog(MAIL_INFO* m_info){
+
+    char    errmsg[ORA_ERR_MSG_MAX_LEN + 1];
+    int     msglen;
+    int     buflen;
+
+	EXEC SQL BEGIN DECLARE SECTION;
+		varchar		itc_serial_no[SERIAL_NO_MAX_LEN + 1];	/*	ITCシリアル番号		*/
+		short		ind_itc_serial_no;
+		
+		varchar		equip_no[EQUIP_NO_MAX_LEN + 1];			/*	設備番号			*/
+		short		ind_equip_no;
+		
+		varchar		sysdate[TIME_MAX_LEN + 1];				/*	共通システム日時	*/
+		short		ind_sysdate;
+		
+		varchar		itc_version[ITC_VERSION + 1];			/*	ITCバージョン		*/
+		short		ind_itc_version;
+		
+		int			seq;									/*	SEQ					*/
+		short		ind_seq;
+		
+		varchar		proc[PROC_NAME_MAX_LEN + 1];			/*	プロセス名			*/
+		varchar		body[BODY_MAX_LEN + 1];					/*	メールボディー全体	*/
+		varchar		from_mailaddr[MAIL_ADDR_MAX_LEN + 1];	/*	ヘッダFromアドレス	*/
+		varchar		to_mailaddr[MAIL_ADDR_MAX_LEN + 1];		/*	ヘッダToアドレス	*/
+		varchar		sr_typ[1 + 1];							/*	送受信区分			*/
+		varchar		mail_typ[MAIL_TYP_MAX_LEN + 1];			/*	メールタイプ		*/
+		int			s_flg;									/*	送信メール総容量	*/
+		int			mail_type_flg;							/*	メール種類(0:通常、1:メンテ)	*/
+		varchar		message_id[MESSAGE_ID_LEN + 1];			/*	メッセージＩＤ		*/
+		
+	EXEC SQL END DECLARE SECTION;
+
+	equip_no.len = 0;
+	itc_serial_no.len = 0;
+	itc_version.len = 0;
+
+	sysdate.len = 0;
+
+	strcpy( proc.arr, G_PROC_COM_PARAM.proc);
+	proc.len = strlen(G_PROC_COM_PARAM.proc);
+
+	strcpy( body.arr, m_info->body);
+	body.len = strlen(m_info->body);
+	
+	strcpy( message_id.arr, m_info->message_id);
+	message_id.len = strlen(m_info->message_id);
+
+	strcpy( from_mailaddr.arr, m_info->from_mailaddr);
+	from_mailaddr.len = strlen(m_info->from_mailaddr);
+
+	strcpy( to_mailaddr.arr, m_info->to_mailaddr);
+	to_mailaddr.len = strlen(m_info->to_mailaddr);
+
+	strcpy( sr_typ.arr, m_info->sr_typ);
+	sr_typ.len = strlen(m_info->sr_typ);
+
+	strcpy( mail_typ.arr, m_info->mail_typ);
+	mail_typ.len = strlen(m_info->mail_typ);
+
+    s_flg = m_info->s_flg;
+    
+    ind_itc_serial_no = 0;
+    ind_equip_no = 0;
+    ind_sysdate = 0;
+    ind_itc_version = 0;
+    
+    mail_type_flg = G_CMD_COM_PARAM.mail_type_flg;
+
+	EXEC SQL WHENEVER SQLERROR GOTO sql_error;
+#ifdef DEBUG
+printf("[%s][Line:%04d] ITC.ADD_ITL_ITC start\n",__FUNCTION__,__LINE__);
+#endif
+	EXEC SQL EXECUTE
+		BEGIN
+			ITC.ADD_ITL_ITC(:itc_serial_no:ind_itc_serial_no, :equip_no:ind_equip_no, :sysdate:ind_sysdate, :seq:ind_seq, :itc_version:ind_itc_version, 
+					:proc, :mail_type_flg, :body, :from_mailaddr, :to_mailaddr, :sr_typ, :mail_typ, :s_flg, :message_id);
+		END;
+	END-EXEC;	
+
+#ifdef DEBUG
+printf("[%s][Line:%04d] ITC.ADD_ITL_ITC end[%d]\n",__FUNCTION__,__LINE__,ind_equip_no);
+#endif
+
+	/*	ITCシリアル番号の取得失敗											*/
+	if(0 == itc_serial_no.len){
+#ifdef DEBUG
+printf("[%s][Line:%04d] itc_serial_no is null \n",__FUNCTION__,__LINE__);
+#endif
+		output_ap_err(__FUNCTION__,__FILE__, __LINE__,"itc_serial_no is null.");
+		return 2;
+	}
+
+	strncpy(G_PROC_COM_PARAM.sysdate, sysdate.arr, sysdate.len);
+	G_PROC_COM_PARAM.sysdate[sysdate.len] = 0x00;
+
+	strncpy(G_CMD_COM_PARAM.equip_no, equip_no.arr, equip_no.len);
+	G_CMD_COM_PARAM.equip_no[equip_no.len] = 0x00;
+
+	strncpy(G_CMD_COM_PARAM.itc_version, itc_version.arr, itc_version.len);
+	G_CMD_COM_PARAM.itc_version[itc_version.len] = 0x00;
+
+	strncpy(G_CMD_COM_PARAM.itc_serial_no, itc_serial_no.arr, itc_serial_no.len);
+	G_CMD_COM_PARAM.itc_serial_no[itc_serial_no.len] = 0x00;
+
+	G_CMD_COM_PARAM.seq = seq;
+
+#ifdef DEBUG
+printf("[%s][Line:%04d]addmaillog check. start\n",__FUNCTION__,__LINE__);
+printf("[%s][Line:%04d][itc_serial_no]=[%s]\n",__FUNCTION__,__LINE__,G_CMD_COM_PARAM.itc_serial_no);
+printf("[%s][Line:%04d][equip_no]=[%s]\n",__FUNCTION__,__LINE__,G_CMD_COM_PARAM.equip_no);
+printf("[%s][Line:%04d][sysdate]=[%s]\n",__FUNCTION__,__LINE__,G_PROC_COM_PARAM.sysdate);
+printf("[%s][Line:%04d][seq]=[%d]\n",__FUNCTION__,__LINE__,seq);
+printf("[%s][Line:%04d][proc]=[%s]\n",__FUNCTION__,__LINE__,proc.arr);
+printf("[%s][Line:%04d][body]=[%s]\n",__FUNCTION__,__LINE__,body.arr);
+printf("[%s][Line:%04d][from_mailaddr]=[%s]\n",__FUNCTION__,__LINE__,from_mailaddr.arr);
+printf("[%s][Line:%04d][sr_typ]=[%s]\n",__FUNCTION__,__LINE__,sr_typ.arr);
+printf("[%s][Line:%04d][mail_typ]=[%s]\n",__FUNCTION__,__LINE__,mail_typ.arr);
+printf("[%s][Line:%04d][s_flg]=[%d]\n",__FUNCTION__,__LINE__,s_flg);
+printf("[%s][Line:%04d][itc_version]=[%s]\n",__FUNCTION__,__LINE__,G_CMD_COM_PARAM.itc_version);
+printf("[%s][Line:%04d]addmaillog check. end\n",__FUNCTION__,__LINE__);
+#endif
+
+	return( 0 );
+
+sql_error:
+
+    /*  エラーメッセージ取得  */
+    buflen = ORA_ERR_MSG_MAX_LEN;
+    sqlglm( errmsg, &buflen, &msglen );
+    errmsg[msglen] = '\0';
+	
+	sprintf(G_CMD_COM_PARAM.err_msg,"ログ追加が失敗しました[%s]",errmsg);
+
+#ifdef DEBUG
+printf("[%s][Line:%04d]ログ追加が失敗しました[%s]\n",__FUNCTION__,__LINE__,errmsg);
+#endif
+
+    /*  エラーコード判定結果取得  */
+    return( chk_oraerr( sqlca.sqlcode ) );
+}
+
+
+
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	updmaillog													*/
+/*	機能	:	ログ更新を行う。メンテ系、通常系の判定を行う。				*/
+/*				メンテ系の場合は、メンテ系ログテーブル。					*/
+/*				通常系の場合は、ログテーブルに対して更新を行う。			*/
+/*	関数型	:	int															*/
+/*	呼出形式:	updmaillog(MAIL_INFO*)										*/
+/*	戻り値	:	-2 異常(DB異常) -1 異常(継続不可)	0 正常終了				*/
+/*	引数	:	メール情報構造の定義										*/
+/*																			*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2009.02.01												*/
+/*	更新																	*/
+/* ------------------------------------------------------------------------ */
+int		updmaillog(MAIL_INFO* m_info){
+
+#ifdef DEBUG
+printf("[%s][Line:%04d]UPDMAILLOG@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@>>>>>\n",__FUNCTION__,__LINE__);
+#endif
+
+	char	errmsg[ORA_ERR_MSG_MAX_LEN + 1];
+	int		ret;
+	int		msglen;
+	int		buflen;
+
+	EXEC SQL BEGIN DECLARE SECTION;
+		varchar		sysdate[TIME_MAX_LEN + 1];				/*	共通システム日時	*/
+		int			seq;									/*	SEQ					*/
+		varchar		proc[PROC_NAME_MAX_LEN + 1];			/*	プロセス名			*/
+		varchar		mail_typ[MAIL_TYP_MAX_LEN + 1];			/*	メールタイプ		*/
+		int			s_flg;									/*	送信メール総容量	*/
+		int			mail_type_flg;							/*	メール種類(0:通常、1:メンテ)	*/
+	EXEC SQL END DECLARE SECTION;
+	
+	strcpy( sysdate.arr, G_PROC_COM_PARAM.sysdate);
+	sysdate.len = strlen(G_PROC_COM_PARAM.sysdate);
+
+	seq = G_CMD_COM_PARAM.seq;
+	
+	strcpy( proc.arr, G_PROC_COM_PARAM.proc);
+	proc.len = strlen(G_PROC_COM_PARAM.proc);
+
+	strcpy( mail_typ.arr, m_info->mail_typ);
+	mail_typ.len = strlen(m_info->mail_typ);
+
+    s_flg = m_info->s_flg;
+    
+    mail_type_flg = G_CMD_COM_PARAM.mail_type_flg;
+
+	EXEC SQL WHENEVER SQLERROR GOTO sql_error;
+#ifdef DEBUG
+printf("[%s][Line:%04d]UPDMAILLOG-(EXEC SQL EXECUTE)->>>>>\n",__FUNCTION__,__LINE__);
+printf("[%s][Line:%04d][sysdate]=[%s]\n",__FUNCTION__,__LINE__,sysdate.arr);
+printf("[%s][Line:%04d][seq]=[%d]\n",__FUNCTION__,__LINE__,seq);
+printf("[%s][Line:%04d][proc]=[%s]\n",__FUNCTION__,__LINE__,proc.arr);
+printf("[%s][Line:%04d][mail_typ]=[%s]\n",__FUNCTION__,__LINE__,mail_typ.arr);
+printf("[%s][Line:%04d][s_flg]=[%d]\n",__FUNCTION__,__LINE__,s_flg);
+#endif
+
+	/*	PL/SQL処理実行													*/
+#ifdef DEBUG
+printf("[%s][Line:%04d](ログ更新)\n",__FUNCTION__,__LINE__);
+#endif
+
+	EXEC SQL EXECUTE
+		BEGIN
+			ITC.UPD_ITL_ITC(:sysdate, :seq, 
+					:proc, :mail_typ, :s_flg, :mail_type_flg);
+		END;
+	END-EXEC;	
+
+#ifdef DEBUG
+printf("[%s][Line:%04d]UPDMAILLOG<<<<<@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n",__FUNCTION__,__LINE__);
+#endif
+
+	return( 0 );
+
+sql_error:
+
+	/*	エラーメッセージ取得												*/
+	buflen = ORA_ERR_MSG_MAX_LEN;
+	sqlglm( errmsg, &buflen, &msglen );
+	errmsg[msglen] = '\0';
+
+#ifdef DEBUG
+printf("[ERRMSG:%s][ERRCD:%d]ORACLE_ERR!!<<<<<@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n",errmsg);
+#endif
+	
+	sprintf(G_CMD_COM_PARAM.err_msg,"ログ更新が失敗しました[%s]",errmsg);
+
+	ret = chk_oraerr( sqlca.sqlcode );
+
+	return( ret );
+
+}
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	chk_oraerr													*/
+/*	機能	:	Oracleで発生したエラーから、継続可能／不可能を判断			*/
+/*	関数型	:	int															*/
+/*	呼出形式:	chk_oraerr( int	oraerr )									*/
+/*	戻り値	:	1 継続可能	-1 継続不可能	-2:Oracle未接続					*/
+/*	引数	:	int			oraerr	Oracleエラーコード						*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2006.06.27												*/
+/*	更新	SKCS	2009.02.01	krossから流用								*/
+/*	更新	SKCS	2009.07.01	文字項目の桁溢れ対応(ORA-12899対応)			*/
+/* ------------------------------------------------------------------------ */
+int		chk_oraerr( int oraerr )
+{
+	int		ret;
+
+	switch( oraerr ){
+		case	-1:		/*	一意制約違反									*/
+		case	-1400:	/*	NULL不可フィールドへのNULL値挿入				*/
+		case	-1401:	/*	フィールドサイズオーバー						*/
+		case	-1405:	/*	フェッチした列の値がNULLです					*/
+		case	-1407:	/*	NULLには更新できません							*/
+		case	-1438:	/*	指定精度を超える値の指定						*/
+		case	-1458:	/*	可変長文字列の長さが無効です					*/
+		case	-1722:	/*	数値が無効です									*/
+		case	-1839:	/*	指定された月に対して日付が無効です				*/
+		case	-1841:	/*	年には0でない-4713から9999の間の値を指定		*/
+		case	-1843:	/*	指定した月が無効です(日付略による00000000指定)	*/
+		case	-1847:	/*	月単位の日付は1から月末日の間で指定				*/
+		case	-1850:	/*	時は0から23の間でなければなりません				*/
+		case	-1851:	/*	分は0から59の間でなければなりません				*/
+		case	-1852:	/*	秒は0から59の間でなければなりません				*/
+		case	-1858:	/*	数値を指定する箇所に文字が指定されています		*/
+		case	-2290:	/*	チェック制約違反								*/
+		case	-2291:	/*	外部参照制約違反								*/
+		case	-932:	/*	データ型が一致しません							*/
+		case	-984:	/*	ここでは列は使用できません						*/
+		case	-902:	/*	データ型異常									*/
+		case	-6502:	/*	ORA-01722と同等(PLSQL上でのエラー)				*/
+		case	-12899:	/*	文字項目の桁溢れ対応							*/
+		case	-20000:	/*	DRT締め処理済み									*/
+		case	-20001:	/*	必須パラメタエラー								*/
+		case	-29273:	/*	HTTPリクエストに失敗(タイムアウト)				*/
+			ret = 1;
+			break;
+		case	-3114:	/*	Oracle Not Connected							*/
+		case	-1012:	/*	Not Logged In									*/
+		case	-4068:	/*	パッケージの既存状態は廃棄されました			*/
+		case	-4020:	/*	デッドロックを検出しました						*/
+			ret = -2;
+			break;
+		default:
+			ret = -1;
+			break;
+	}
+
+#ifdef DEBUG
+printf("[ORA-ERR!!][ERRCD:%d]ORACLE_ERR!!\n",oraerr);
+#endif
+
+
+
+	return( ret );
+}
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	chk_date													*/
+/*	機能	:	年月の正当性をチェックする									*/
+/*	関数型	:																*/
+/*	呼出形式:																*/
+/*	戻り値	:																*/
+/*	引数	:																*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2006.06.27												*/
+/*	更新																	*/
+/* ------------------------------------------------------------------------ */
+int chk_date(char *p1){
+    struct	tm tm;
+	char	*ret;
+	int		i;
+	char	buf[20];
+	int		idx;
+	
+	/*	引数チェック(必ずYYYYMMDDhhmissの１４バイト)						*/
+	if(14 < strlen(p1)){
+		return -1;
+	}
+#ifdef DEBUG
+printf("[%s]check - input\n",p1);
+#endif
+	
+	/*	初期化																*/
+	memset(buf,0x00,sizeof(buf));
+	idx = 0;
+	
+	/*	'年'省略の場合														*/
+	if(!strncmp(p1,"XXXX",4)){
+		/*	必ず存在する'年'とする											*/
+		strcat(buf,"2000");
+	}else{
+		/*	引数から値を取得												*/
+		strncat(buf,p1,4);
+	}
+	idx += 4;
+
+	strcat(buf,"/");
+	/*	'月'省略の場合														*/
+	if(!strncmp(&p1[idx],"XX",2)){
+		/*	必ず存在する'月'とする											*/
+		strcat(buf,"01");
+	}else{
+		/*	引数から値を取得												*/
+		strncat(buf,&p1[idx],2);
+	}
+	idx += 2;
+
+	strcat(buf,"/");
+	/*	'日'省略の場合														*/
+	if(!strncmp(&p1[idx],"XX",2)){
+		/*	必ず存在する'日'とする											*/
+		strcat(buf,"01");
+	}else{
+		/*	引数から値を取得												*/
+		strncat(buf,&p1[idx],2);
+	}
+	idx += 2;
+
+	strcat(buf," ");
+	/*	'時'省略の場合														*/
+	if(!strncmp(&p1[idx],"XX",2)){
+		/*	必ず存在する'時'とする											*/
+		strcat(buf,"00");
+	}else{
+		/*	引数から値を取得												*/
+		strncat(buf,&p1[idx],2);
+	}
+	idx += 2;
+
+	strcat(buf,":");
+	/*	'分'省略の場合														*/
+	if(!strncmp(&p1[idx],"XX",2)){
+		/*	必ず存在する'分'とする											*/
+		strcat(buf,"00");
+	}else{
+		/*	引数から値を取得												*/
+		strncat(buf,&p1[idx],2);
+	}
+	idx += 2;
+
+	strcat(buf,":");
+	/*	'秒'省略の場合														*/
+	if(!strncmp(&p1[idx],"XX",2)){
+		/*	必ず存在する'秒'とする											*/
+		strcat(buf,"00");
+	}else{
+		/*	引数から値を取得												*/
+		strncat(buf,&p1[idx],2);
+	}
+	idx += 2;
+	
+
+	ret =(char *) strptime(buf, "%Y/%m/%d %H:%M:%S", &tm);
+	
+	if(0x00 == ret ){
+#ifdef DEBUG
+printf("[%s]check - NG\n",buf);
+#endif
+		return -1;
+	}
+#ifdef DEBUG
+printf("[%s]check - OK\n",buf);
+#endif
+	return 0;
+}
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	snd_ml														*/
+/*	機能	:	メール送信を行う。											*/
+/*	関数型	:	int															*/
+/*	呼出形式:	snd_ml(p_proc_nm, p_equip_no, p_shop_cd, p_addr, p_alias	*/
+/*				, p_bd_hd, p_ml_body,p_cd,from_addr,reply_to_addr,s_ml_sh)	*/
+/*	戻り値	:	1 継続可能	-1 継続不可能	-2:Oracle未接続					*/
+/*	引数	:	char *p_proc_nm        I : プロセス名						*/
+/*				char *p_shop_cd        I : 営業所コード						*/
+/*				char *p_equip_no       I : 設備番号							*/
+/*				char *p_addr           I : (送信)メールアドレス				*/
+/*				char *p_alias          I : (送信)メール alias				*/
+/*				char *p_bd_hd          I : (送信)見出し						*/
+/*				char *p_ml_body        I : (送信)メール の見出しの次のbody部*/
+/*				char *p_cd             I : prefix_cd						*/
+/*				char *p_from_addr      I : (送信元)メールアドレス			*/
+/*				char *p_reply_to_addr  I : (返信先)メールアドレス			*/
+/*				char *s_ml_sh          I : メール送信シェル					*/
+/*				char *p_sysdate        I : 共通システム日付					*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2009.01.22	krossから流用／新規							*/
+/*	更新																	*/
+/* ------------------------------------------------------------------------ */
+int snd_ml(char *p_proc_nm
+		, char *p_equip_no
+		, char *p_shop_cd
+		, char *p_addr
+		, char *p_alias
+		, char *p_bd_hd
+		, char *p_ml_body
+		, char *p_cd
+		, char *p_from_addr
+		, char *p_reply_to_addr
+		, char *s_ml_sh
+		, char *p_sysdate)
+{
+
+	return(0);
+}
+
+/*******************************************************************************
+ *
+ *  Function	: ]trim_brackets
+ *
+ *  Parameters	: (I)char	*i_ml_addr	: From/Toに指定されてある原型
+ *				  (O)char	*o_ml_addr	: "<>"の内側のみ抜き出した文字列
+ *
+ *  Return		: none
+ *
+ *  Discription	: qmailでは From/To のアドレス部分に "<>" が付加されるため
+ *				  それを取り除く
+ *
+ *  History		: 初版  2003/06/10  by K.Yamaguchi(HIC)
+ *
+ *******************************************************************************/
+void
+trim_brackets(char *i_ml_addr, char *o_ml_addr)
+{
+	char *sp;
+	char *ep;
+
+	if(sp = strrchr(i_ml_addr, CHR_ML_ADDR_PREFIX)) {
+		strcpy(o_ml_addr, sp + 1);
+	}
+	else {
+		strcpy(o_ml_addr, i_ml_addr);
+	}
+
+	if(ep = strrchr(o_ml_addr, CHR_ML_ADDR_POSTFIX)) {
+		*ep = '\0';
+	}
+
+
+//	sp = strrchr(i_ml_addr, CHR_ML_ADDR_PREFIX);
+//	ep = strrchr(i_ml_addr, CHR_ML_ADDR_POSTFIX);
+
+//	/* "<>"セットが見つかった場合のみ、それを除去する。それ以外はそのままコピー */
+//	if(sp != NULL && ep != NULL){
+//		memcpy((void *)o_ml_addr, (void *)(sp + 1), (size_t)(ep - (sp + 1)));
+//	}
+//	else{
+//		strcpy(o_ml_addr, i_ml_addr);
+//	}
+}
+
+char * strncpy_withnul(char *s1,const char *s2, size_t n)
+{
+	strncpy(s1,s2,n);
+	s1[n] = '\0';
+
+	return s1;
+}
+
+varchar *vcstrncpy(varchar *s1, const char *s2, size_t n)
+{
+	strncpy(s1->arr,s2,n);
+	if( n < strlen(s2)){
+		s1->len = n;
+	}else{
+		s1->len = strlen(s2);
+	}
+	s1->arr[s1->len] = 0x00;
+	
+	return s1;
+}
+

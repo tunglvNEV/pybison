@@ -1,0 +1,1550 @@
+/* ======================================================================== */
+/*	コベルコ建機様向け用　稼動機管理システム				*/
+/*	受信メールテキストデータ→DB変換　バッチプログラムメイン部				*/
+/*	ファイル名	：	ml_ent_01.pc											*/
+/*	説明		：	建機から送信されたメールから生成されたテキストファイル	*/
+/*					を解析して、Oracleデータベースに登録する				*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2009.02.01												*/
+/*	更新																	*/
+/*			KSC 	2011.10.25	ミニ流用：国外／オーブコム２対応			*/
+/*
+			KSC 	2012.08		Tier4A対応
+			KSC 	2012.08.28	警報通知の連発抑止対応
+*/
+/*																			*/
+/* ======================================================================== */
+
+/* ------------------------------------------------------------------------ */
+/*	インクルードヘッダ定義													*/
+/* ------------------------------------------------------------------------ */
+#include	<stdio.h>
+#include	<stdlib.h>
+#include	<string.h>
+#include	<ctype.h>
+#include	<errno.h>
+#include	<err.h>
+
+#include	<time.h>
+#include	<sys/timeb.h>
+
+#include	<syslog.h>
+
+#include	<sys/stat.h>
+#include	<sys/types.h>
+#include	<fcntl.h>
+#include	<sys/ipc.h>
+#include	<sys/msg.h>
+
+#include	<syslog.h>
+#include	<stdarg.h>
+
+#include	<sqlca.h>
+EXEC SQL BEGIN DECLARE SECTION;
+#include	"merit_bat.h"
+EXEC SQL END DECLARE SECTION;
+
+/* ------------------------------------------------------------------------ */
+/*	定数の定義																*/
+/* ------------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------------ */
+/*	関数プロトタイプ宣言													*/
+/* ------------------------------------------------------------------------ */
+int		main( int, char** );
+void	exit_proc();
+
+/* ------------------------------------------------------------------------ */
+/*	外部シンボル参照宣言													*/
+/* ------------------------------------------------------------------------ */
+extern FILE *yyin;
+extern PROC_COM_PARAM	G_PROC_COM_PARAM;
+extern CMD_COM_PARAM	G_CMD_COM_PARAM;
+extern CMD_SC_PARAM     G_CMD_SC_PARAM;      /*  侵入警報構造体             */
+extern CMD_SA_PARAM     G_CMD_SA_PARAM;      /*  エリア外警報構造体         */
+extern CMD_BT_PARAM     G_CMD_BT_PARAM;      /*  バッテリー外し警報構造体   */
+extern CMD_XX_PARAM     G_CMD_XX_PARAM;      /*  警報    */
+extern CMD_C30X1_PARAM  G_CMD_SS_PARAM;
+extern CMD_C30X1_PARAM  G_CMD_SR_PARAM;
+extern CMD_C30X1_PARAM  G_CMD_SG_PARAM;
+extern CMD_C30X1_PARAM  G_CMD_SU_PARAM;
+extern CMD_HANYO06_PARAM  G_CMD_FDFR_REC[MAX_FDFR_REC];
+
+extern void init_cmd_param();
+
+/* ------------------------------------------------------------------------ */
+/*	グローバル変数の宣言													*/
+/* ------------------------------------------------------------------------ */
+static char	*p_eventcd =	"01";
+static char	*p_progid = "ml_ent01";/*		*/
+static int	lockfd;					/*	排他制御用ファイルアクセス情報		*/
+
+int isTimer(char *str,char *stp)
+{
+	if(0 == strcmp(str,"9999")
+	|| 0 == strcmp(stp,"9999")
+	|| 0x00 == str[0]
+	|| 0x00 == stp[0] ){
+		return 0;
+	}
+	time_t timer;
+	struct tm *date;					/*	現在日時情報					*/
+	char dtbuff[10+1];
+	
+	timer = time(NULL);          /* 経過時間を取得 */
+    date = localtime(&timer);    /* 経過時間を時間を表す構造体 date に変換 */
+	strftime(dtbuff, 5, "%H%M\0", date);
+	
+    if(-1 == strcmp(dtbuff,str)
+    || 1 == strcmp(dtbuff,stp) ){
+		return 0;
+	}
+	return 1;
+}
+
+int isPauseTimer(ENVDATA* p_env)
+{
+	int i = 0;
+	char *str,*stp;
+	
+	for(i;i<PAUSE_TIMES_MAX;i++){
+		str = p_env->pause_str_times[i];
+		stp = p_env->pause_stp_times[i];
+		
+		if(0x00 == str[0]
+		|| 0x00 == stp[0] ){
+			return 0;
+		}
+		if(isTimer(str,stp)){
+			return 1;
+		}
+	}
+	return 0;
+}
+
+
+void tlog(char *p,ENVDATA* p_env)
+{
+	#ifdef DEBUG_TLOG
+	double   elapsed_time;
+	unsigned int sec, millisec;
+	struct timeb timebuffer;
+	char logbuf[50];
+	
+	if( 0 == isTimer(p_env->time_log_str,p_env->time_log_stp) ){
+		return;
+	}
+	
+	ftime( &timebuffer );
+	sec = timebuffer.time;
+	millisec = sec * 1000 + timebuffer.millitm;
+	
+	sprintf(logbuf,"TLOG,%s,%u\0",p,millisec);
+	output_ap_err(__FUNCTION__,__FILE__, __LINE__, logbuf,G_CMD_COM_PARAM.seq);
+	#endif
+}
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	main														*/
+/*	機能	:	メイン関数													*/
+/*	関数型	:	int															*/
+/*	呼出形式:	main( int argc, char** argv )								*/
+/*	戻り値	:	0 正常	-xx 異常											*/
+/*	引数	:	int argc		引数の数									*/
+/*				char *argv[]	引数参照ポインタの配列						*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2009.02.01												*/
+/*	更新																	*/
+/* ------------------------------------------------------------------------ */
+int		main( int argc, char *argv[] )
+{
+
+	EXEC SQL BEGIN DECLARE SECTION;
+		varchar	uid[1024+1];		/*	Oracle接続文字列(UID+PASSWORD)格納域*/
+		varchar	dbcon1[10];
+	EXEC SQL END DECLARE SECTION;
+
+	char *pFileNm;
+	char *pBuf;
+	FILE *fp;
+	fpos_t fsize;
+	int work;
+	int ret;
+	ENVDATA	env;					/*	環境変数設定取得値格納用			*/
+	char	srcdir[1024+1];			/*	メール配置ディレクトリ				*/
+	char	wrkdir[1024+1];			/*	メール作業ディレクトリ				*/
+	char	lockfile[1024+1];		/*	排他制御用ファイル名				*/
+	char	errmsg[2048];			/*	エラーメッセージ					*/
+	int		errflag;				/*	エラー判定用コード					*/
+	int		loopflg;				/*	ループ継続フラグ					*/
+	char	filename[1024+1];		/*	テキストファイル名格納域			*/
+	int		msgid;					/*	メッセージのID						*/
+	MSGBUF	msg;					/*	メッセージ受信領域					*/
+	char	*p;
+
+	/*	プログラム終了時の処理を設定する	*/
+	if(0 != atexit(exit_proc)){
+#ifdef DEBUG
+printf("[%s][Line:%04d]atexit err\n", __FUNCTION__,__LINE__);
+#endif
+		output_ap_err(__FUNCTION__,__FILE__, __LINE__, "atexit err" );
+		return -1;
+	}
+
+	memset(&G_PROC_COM_PARAM,0x00,sizeof(G_PROC_COM_PARAM));
+	memset(&env,0x00,sizeof(env));
+	
+	/*	共通情報の設定：プロセス名	*/
+	strcpy(G_PROC_COM_PARAM.proc,p_progid);
+	G_CMD_COM_PARAM.seq = -1;
+	
+	/*	共通情報の設定：実行コマンド名	*/
+	p = strrchr(argv[0],'/');
+	if(NULL == p){
+		p = argv[0];
+	}else{
+		p++;
+	}
+	strcpy(G_PROC_COM_PARAM.exec_proc,p);
+	
+	pFileNm = NULL;
+	pBuf = NULL;
+	fp = NULL;
+	resetAlloc_point();
+	
+	/*	開始ログの出力														*/
+	output_sys_info(__FUNCTION__,__FILE__,__LINE__,"START MAIN",G_CMD_COM_PARAM.seq);
+
+	/*	ディレクトリ名の作成(デフォルト値設定：環境変数省略時に有効)		*/
+	sprintf( env.mail_set_dir, MAIL_SETDIR, p_eventcd );
+	sprintf( env.mail_work_dir, MAIL_WORKDIR, p_eventcd );
+
+	/*	排他ファイル名の作成(デフォルト値設定：環境変数省略時に有効)		*/
+	sprintf( env.lock_file_name , LOCK_FILENAME, p_eventcd );
+	
+	/*	タイムログ出力時間範囲(デフォルト値設定：環境変数省略時に有効)		*/
+	strcpy( env.time_log_str , "9999");
+	strcpy( env.time_log_stp , "9999");
+	
+	/*	環境変数の取得														*/
+	if( getenvdata( &env ) ){
+		return( -1 );
+	}
+	
+	/*	環境変数の設定値を採用(省略の場合は、デフォルトを適用)				*/
+	/*	メールテキスト格納先												*/
+	strcpy( srcdir,env.mail_set_dir);
+	/*	メールテキスト作業ディレクトリ										*/
+	strcpy( wrkdir,env.mail_work_dir);
+	/*	排他ファイル名の作成												*/
+	strcpy( lockfile , env.lock_file_name );
+	
+#ifdef DEBUG
+printf( "set_mail DIR = [%s]\n", srcdir );
+printf( "work_mail DIR = [%s]\n", wrkdir );
+printf( "Oracle string = [%s]\n", env.oracle_connect_string );
+#endif
+
+#ifdef DEBUG
+printf( "lock file = [%s]\n", lockfile );
+#endif
+
+	/*	多重起動チェック用Lockファイルの削除／作成							*/
+	if( crelockfile( lockfile, &lockfd ) ){
+#ifdef DEBUG
+printf( "[%s] exist.\n",lockfile);
+#endif
+		output_ap_err(__FUNCTION__,__FILE__, __LINE__, "LOCK_FILE exist." );
+		return( -2 );
+	}
+	
+	/*	Oracle接続文字列獲得												*/
+	strcpy( uid.arr, env.oracle_connect_string );
+	uid.len = strlen( env.oracle_connect_string );
+	
+	/*	受信用メッセージID取得												*/
+	msgid = msgget( env.mail_msg_ky, 0666|IPC_CREAT );
+	if( -1 == msgid ){				/*	メッセージID取得できず				*/
+		sprintf( errmsg, "メッセージIDの取得に失敗しました。ID=%ld", env.mail_msg_ky );
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__, errmsg ,G_CMD_COM_PARAM.seq);
+		close( lockfd );
+		return( -3 );
+	}
+    
+    strcpy(AT_DBCON_1,DBCON_1);
+    
+	/*	Oracleに接続														*/
+	EXEC SQL CONNECT :uid;
+	/*EXEC SQL CONNECT :uid AT :AT_DBCON_1;*/
+	
+	/*	Endless																*/
+	while( 1 ){
+		
+		/*	処理単位(同時処理)												*/
+		
+		/*	メッセージ受信													*/
+		if( -1 == msgrcv( msgid, &msg, 4, 0, 0 ) ){
+			sprintf( errmsg, "メッセージ受信に失敗しました。");
+			output_sys_err(__FUNCTION__,__FILE__, __LINE__, errmsg ,G_CMD_COM_PARAM.seq );
+			close( lockfd );
+			return( -4 );
+		}
+
+		/*	終了要求であれば、処理を終わる									*/
+		if( !strcmp( msg.mtext, "end" ) ){
+#ifdef DEBUG
+printf( "end message....\n");
+#endif
+			output_ap_err(__FUNCTION__,__FILE__, __LINE__, "end message ...." );
+			break;
+		}
+
+		/*	コマンド処理要求以外の場合(且つ、終了要求でもない)				*/
+		if( strcmp( msg.mtext, "get" ) ){	/*	コマンド処理要求でなければ	*/
+			sprintf( errmsg, "未定義のメッセージ[%s]を受信しました。", msg.mtext);
+			output_ap_err(__FUNCTION__,__FILE__, __LINE__, errmsg );
+			continue;						/*	次のメッセージ受信へ		*/
+		}
+
+		/*	ロックファイルの所在確認										*/
+		if( NULL == ( fp = fopen( lockfile, "r" ) ) ){
+			/*	ロックファイルが存在しなければ								*/
+			/*	SYSLOG出力													*/
+			sprintf( errmsg, "ロックファイルが存在しません。");
+			output_sys_err(__FUNCTION__,__FILE__, __LINE__, errmsg ,G_CMD_COM_PARAM.seq );
+			close( lockfd );
+			return( -10 );
+		}
+		fclose( fp );
+
+		errflag = 0;
+		loopflg = 1;
+		while( 1 == loopflg ){
+			tlog("START",&env);
+			
+			/*	メール毎：初期化処理										*/
+			init_cmd_param();
+			/*	連番未取得の為、－１とする	*/
+			G_CMD_COM_PARAM.seq = -1;
+			G_CMD_COM_PARAM.keiho_stop = 0;	/* 初期化：警報通知抑止なし */
+
+#ifdef DEBUG
+printf( "[%s] - getfilelist \n", __FUNCTION__ );
+#endif
+			tlog("GETFILELIST",&env);
+			/*	処理対象のファイル一覧取得									*/
+			ret = getfilelist( srcdir, filename );
+#ifdef DEBUG
+printf( "[%s]getfilelist ret =%ld\n", __FUNCTION__, ret);
+#endif
+			switch( ret ){
+				case	0:				/*	ファイルなし					*/
+#ifdef DEBUG
+printf( "no files\n");
+#endif
+					G_CMD_COM_PARAM.mail_file_nm[0] = '\0';
+					loopflg = 0;
+					break;
+				case	-1:				/*	システムコールエラー			*/
+#ifdef DEBUG
+printf( "system call error. \n");
+#endif
+					G_CMD_COM_PARAM.mail_file_nm[0] = '\0';
+					loopflg = 0;
+					errflag = -1;
+					break;
+				default:				/*	処理対象ファイルあり			*/
+					
+					while(isPauseTimer(&env)){
+						/* 一時停止開始終了～終了時間＋最大１分間　停止する */
+						sleep(60);
+					}
+					
+#ifdef DEBUG
+printf( "file [%s]\n", filename);
+#endif
+					strcpy( G_CMD_COM_PARAM.mail_file_nm, filename );
+					/*	取得したファイルを処理する							*/
+					tlog("GETDATA",&env);
+					ret = getdata( srcdir, wrkdir, filename, &env );
+#ifdef DEBUG
+printf( "getdata end[ret:%d]\n", ret);
+#endif
+					if( -1 == ret ){
+						errflag = -1;
+					}
+					
+					/* ITC関連レコードアンロック(ロックはgetdata内) */
+					/**** 処理対象レコードロック ****/
+					/*unlock_itc_info();*/
+					/********************************/
+					
+					break;
+			}
+			if( errflag ){
+				close( lockfd );
+				return( -9 );
+			}
+			freeAlloc_point();
+		}
+		
+	}
+	freeAlloc_point();
+	
+	/*	正常終了															*/
+	close( lockfd );
+	return( 0 );
+}
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	exit_proc													*/
+/*	機能	:	終了時の処理を実施(メモリ解放など)							*/
+/*	関数型	:	int															*/
+/*	呼出形式:	exit_proc()													*/
+/*	戻り値	:	0 正常	-xx 異常											*/
+/*	引数	:																*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2008.12.17												*/
+/*	更新																	*/
+/* ------------------------------------------------------------------------ */
+void exit_proc()
+{
+#ifdef DEBUG
+printf("[%s][Line:%04d]Bye\n", __FUNCTION__,__LINE__);
+#endif
+
+	/*	開始ログの出力														*/
+	output_sys_err(__FUNCTION__,__FILE__,__LINE__,"ml_ent end!!!!",G_CMD_COM_PARAM.seq);
+
+	freeAlloc_point();
+	close( lockfd );
+}
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	getenvdata													*/
+/*	機能	:	環境変数から動作に必要なパラメータを取得する				*/
+/*	関数型	:	int															*/
+/*	呼出形式:	getenvdata( ENVDATA* p_env )								*/
+/*	戻り値	:	0 正常	-1 異常												*/
+/*	引数	:	ENVDATA*	p_env	環境変数の値格納域へのポインタ			*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2009.02.20												*/
+/*	更新																	*/
+/* ------------------------------------------------------------------------ */
+int		getenvdata( ENVDATA *p_env )
+{
+	char	*p_work;					/*	環境変数参照ポインタ			*/
+	struct stat buf;					/*	ファイル情報参照構造体			*/
+	char	logmsg[2048];				/*	ログ出力用						*/
+	int idx = 0;
+	char	*ptok;
+
+	/*	メッセージキューのキー												*/
+	p_work = getenv( "MAIL_MSG_KY" );
+	if( NULL == p_work ){
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__,
+				"環境変数[MAIL_MSG_KY]が取得できませんでした。",G_CMD_COM_PARAM.seq);
+		return( -1 );
+	}
+	p_env->mail_msg_ky = atoi( p_work );
+
+	/*	Oracle接続文字列													*/
+	p_work = getenv( "ORACLE_CONNECT_STRING" );
+	if( NULL == p_work ){
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__,
+				"環境変数[ORACLE_CONNECT_STRING]が取得できませんでした。",G_CMD_COM_PARAM.seq);
+		return( -1 );
+	}
+	strcpy( p_env->oracle_connect_string, p_work );
+
+	/*	警報通知メール送信用シェル（フルパス）								*/
+	p_work = getenv( "SND_ML_SHELL" );
+	if( NULL == p_work ){
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__,
+				"環境変数[SND_ML_SHELL]が取得できませんでした。",G_CMD_COM_PARAM.seq);
+		return( -1 );
+	}
+	/*	正常なファイル？であるかを確認のため、ファイル情報を取得する		*/
+	if( -1 == stat( p_work, &buf ) ){
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__,
+				"警報通知メール送信シェル情報取得にてエラーが発生しました。",G_CMD_COM_PARAM.seq);
+		return( -1 );
+	}
+	strcpy( p_env->snd_ml_shell, p_work );
+
+	/*	警報通知メール発信アドレス											*/
+	p_work = getenv( "FROM_ADDRESS" );
+	if( NULL == p_work ){
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__,
+				"env[FROM_ADDRESS] is not setting....",G_CMD_COM_PARAM.seq);
+		return( -1 );
+	}
+	strcpy( p_env->from_address, p_work );
+
+	/*	警報返信先メール発信アドレス										*/
+	p_work = getenv( "REPLY_TO_ADDRESS" );
+	if( NULL == p_work ){
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__,
+				"env[REPLY_TO_ADDRESS] is not setting....",G_CMD_COM_PARAM.seq);
+		return( -1 );
+	}
+	strcpy( p_env->reply_address, p_work );
+
+	/*	メールテキスト格納ディレクトリ										*/
+	p_work = getenv( "MAIL_SET_DIR" );
+	if( NULL != p_work ){
+		strcpy( p_env->mail_set_dir, p_work );
+	}else{
+		sprintf( logmsg, "env[%s] is not setting....default[%s]"
+				, "MAIL_SET_DIR"
+				, p_env->mail_set_dir );
+		output_ap_err(__FUNCTION__,__FILE__, __LINE__, logmsg,G_CMD_COM_PARAM.seq);
+	}
+
+	/*	メールテキスト作業ディレクトリ										*/
+	p_work = getenv( "MAIL_WORK_DIR" );
+	if( NULL != p_work ){
+		strcpy( p_env->mail_work_dir, p_work );
+	}else{
+		sprintf( logmsg, "env[%s] is not setting....default[%s]"
+				, "MAIL_WORK_DIR"
+				, p_env->mail_work_dir );
+		output_ap_err(__FUNCTION__,__FILE__, __LINE__, logmsg,G_CMD_COM_PARAM.seq);
+	}
+
+	/*	ロックファイル名													*/
+	p_work = getenv( "LOCK_FILE_NAME" );
+	if( NULL != p_work ){
+		strcpy( p_env->lock_file_name, p_work );
+	}else{
+		sprintf( logmsg, "env[%s] is not setting....default[%s]"
+				, "LOCK_FILE_NAME"
+				, p_env->lock_file_name );
+		output_ap_err(__FUNCTION__,__FILE__, __LINE__, logmsg,G_CMD_COM_PARAM.seq);
+	}
+	/*	タイムログ出力開始時間													*/
+	p_work = getenv( "TIME_LOG_STR" );
+	if( NULL != p_work ){
+		strcpy( p_env->time_log_str, p_work );
+	}else{
+		sprintf( logmsg, "env[%s] is not setting....default[%s]"
+				, "TIME_LOG_STR"
+				, p_env->time_log_str );
+		output_ap_err(__FUNCTION__,__FILE__, __LINE__, logmsg,G_CMD_COM_PARAM.seq);
+	}
+	
+	/*	タイムログ出力終了時間													*/
+	p_work = getenv( "TIME_LOG_STP" );
+	if( NULL != p_work ){
+		strcpy( p_env->time_log_stp, p_work );
+	}else{
+		sprintf( logmsg, "env[%s] is not setting....default[%s]"
+				, "TIME_LOG_STP"
+				, p_env->time_log_stp );
+		output_ap_err(__FUNCTION__,__FILE__, __LINE__, logmsg,G_CMD_COM_PARAM.seq);
+	}
+	
+	/*	実行抑止開始時間													*/
+	idx = 0;
+	p_work = getenv( "PAUSE_STR_TIMES" );
+	if( NULL != p_work ){
+		ptok = strtok(p_work,",");
+		while(NULL!=ptok && idx < PAUSE_TIMES_MAX){
+			strcpy(p_env->pause_str_times[idx],ptok);
+			idx ++;
+			ptok = strtok(NULL,",");
+		}
+	}
+	
+	/*	実行抑止終了時間													*/
+	idx = 0;
+	p_work = getenv( "PAUSE_STP_TIMES" );
+	if( NULL != p_work ){
+		ptok = strtok(p_work,",");
+		while(NULL!=ptok && idx < PAUSE_TIMES_MAX){
+			strcpy(p_env->pause_stp_times[idx],ptok);
+			idx ++;
+			ptok = strtok(NULL,",");
+		}
+	}
+	
+
+	/*	正常終了															*/
+	return( 0 );
+}
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	getdata														*/
+/*	機能	:	メール一通処理												*/
+/*	関数型	:	int															*/
+/*	呼出形式:	getdata( char* p_srcdir, char* p_dstdir, char* p_infile,	*/
+/*						ENVDATA* p_env )									*/
+/*	戻り値	:	0 正常	-xx 異常											*/
+/*	引数	:	char*	p_srcdir	テキストファイル配置ディレクトリ名		*/
+/*				char*	p_dstdir	テキストファイル移動先ディレクトリ名	*/
+/*				char*	p_infile	テキストファイル名						*/
+/*				ENVDATA* p_env		環境変数取得値格納域へのポインタ		*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2009.02.01												*/
+/*	更新																	*/
+/* ------------------------------------------------------------------------ */
+int		getdata( char* p_srcdir, char* p_dstdir, char* p_infile, ENVDATA* p_env )
+{
+	FILE	*fp;					/*	ファイル参照構造体					*/
+	char	filename[1024];			/*	処理対象ファイル名					*/
+	int		ret;					/*	各関数からの戻り値					*/
+	char	errmsg[2048];			/*	エラーメッセージ					*/
+	char	*p_tel;					/*	電話番号抽出用ポインタ				*/
+	char	*p_dummy;				/*	電話番号抽出用ポインタ				*/
+	char	telno[128];				/*	電話番号格納域						*/
+	struct	stat	st;					/*	ファイル情報獲得領域			*/
+	MAIL_INFO	mlinfo;				/*	メールヘッダ情報構造体				*/
+
+
+#ifdef DEBUG
+printf( "[%s]srcdir = %s\n", __FUNCTION__, p_srcdir );
+printf( "[%s]dstdir = %s\n", __FUNCTION__, p_dstdir );
+printf( "[%s]filename = %s\n", __FUNCTION__, p_infile );
+#endif
+	tlog("MOVEFILE",p_env);
+	/*	ファイルを作業ディレクトリへ移動する								*/
+	if( movefile( p_srcdir, p_dstdir, p_infile ) ){
+		return( -1 );
+	}
+	/*	ファイル名の作成													*/
+	strcpy( filename, p_dstdir );
+	strcat( filename, p_infile );
+
+	tlog("STAT",p_env);
+	/*	ファイル情報の獲得													*/
+	if( -1 == stat( filename, &st ) ){
+		sprintf( errmsg, "ファイル情報取得に失敗しました。filename=[%s]", filename );
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__, errmsg ,G_CMD_COM_PARAM.seq);
+		return( -1 );
+	}
+	/*	0バイトファイルの対処（何もしないで次のファイルへ）					*/
+	if( 0 == st.st_size ){
+		return( 0 );
+	}
+
+	tlog("FOPEN",p_env);
+	if( NULL == ( fp = fopen( filename, "r" ) ) ){
+		sprintf( errmsg, "ファイルの読み込みモードオープンに失敗しました。filename[=%s]", filename );
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__, errmsg ,G_CMD_COM_PARAM.seq);
+		return( -1 );
+	}
+
+	tlog("GET_MAIL_INFO",p_env);
+	/*	メールヘッダ情報取得												*/
+	memset( ( void* )&mlinfo, 0x00, sizeof( mlinfo ) );
+	ret = get_mail_info( &mlinfo, &fp, st.st_size+2 );
+	if( -1 == ret ){
+		sprintf( errmsg, "メールヘッダ情報取得失敗の為、処理を終了致します。filename[=%s]", filename );
+		output_ap_err(__FUNCTION__,__FILE__, __LINE__, errmsg ,G_CMD_COM_PARAM.seq);
+		fclose( fp );
+		return( -1 );
+	}
+	/*	メールヘッダのFrom異常												*/
+	if( 1 == ret ){						/*	次ファイルへ					*/
+		sprintf( errmsg, "メールヘッダFrom異常の為、次ファイルを処理します。。filename[=%s]", filename );
+		output_ap_err(__FUNCTION__,__FILE__, __LINE__, errmsg ,G_CMD_COM_PARAM.seq);
+		fclose( fp );
+		return( 1 );
+	}
+
+#ifdef DEBUG
+	printf( "[%s]ML-Head start\n", __FUNCTION__);
+	printf( "[%s]ML-Head(header)=[%s]\n", __FUNCTION__, mlinfo.header );
+	printf( "[%s]ML-Head(body)=[%s]\n", __FUNCTION__, mlinfo.body );
+	printf( "[%s]ML-Head(from_mailaddr)=[%s]\n", __FUNCTION__, mlinfo.from_mailaddr );
+	printf( "[%s]ML-Head(to_mailaddr)=[%s]\n", __FUNCTION__, mlinfo.to_mailaddr );
+	printf( "[%s]ML-Head(body_to_mailaddr)=[%s]\n", __FUNCTION__, mlinfo.body_to_mailaddr );
+	printf( "[%s]ML-Head end \n", __FUNCTION__);
+#endif
+
+	tlog("TRIM_BRACKETS",p_env);
+	/*	受信アドレスを判定しメール情報構造体～＞共通構造体へ値設定	*/
+	/*	FROM/TOは条件判定して設定する	*/
+	/*	送信元アドレスは、ヘッダ「To」から取得する	*/
+	/*	メールアドレスに'<','>'が含まれる場合は、取り除いてコピーする		*/
+	trim_brackets(mlinfo.to_mailaddr,G_CMD_COM_PARAM.to_mailaddr);
+	
+	/*	メンテ／通常の判定(ここでは出来ない(オーブコム２仕様にあわせる))	*/
+	G_CMD_COM_PARAM.mail_type_flg = 9;
+	
+	/*	通常メール／NGメールの判定	*/
+	G_CMD_COM_PARAM.mail_ng_flg = 0;
+	if(1 == mlinfo.nc_status_ng
+	|| 1 == mlinfo.no_mailbox){
+		/*	NGメール		*/
+		G_CMD_COM_PARAM.mail_ng_flg = 1;
+		strcpy(G_CMD_COM_PARAM.mail_type,MTYP_NG);
+		strcpy(G_CMD_COM_PARAM.mail_type_forlog,"NG");
+	}
+	
+	/*	From,Toの判定(メールタイプによって使用するアドレスが異なる)	*/
+	if(1 == G_CMD_COM_PARAM.mail_ng_flg){
+		/*	メンテ／通常の判定	*/
+		/*	通常系メール	*/
+		/*	送信元アドレスの特定	*/
+		if(strlen(mlinfo.body_to_mailaddr)){
+			/*	本文のto句を使用する	*/
+			/*	メールアドレスに'<','>'が含まれる場合は、取り除いてコピーする*/
+			trim_brackets(mlinfo.body_to_mailaddr,G_CMD_COM_PARAM.from_mailaddr);
+			/*strcpy(G_CMD_COM_PARAM.from_mailaddr,mlinfo.body_to_mailaddr);*/
+		}else{
+			/*	ヘッダのfrom句を使用する	*/
+			/*	メールアドレスに'<','>'が含まれる場合は、取り除いてコピーする*/
+			trim_brackets(mlinfo.from_mailaddr,G_CMD_COM_PARAM.from_mailaddr);
+			/*strcpy(G_CMD_COM_PARAM.from_mailaddr,mlinfo.from_mailaddr);*/
+		}
+	}else{
+		/*	ヘッダのfrom句を使用する	*/
+		/*	メールアドレスに'<','>'が含まれる場合は、取り除いてコピーする*/
+		trim_brackets(mlinfo.from_mailaddr,G_CMD_COM_PARAM.from_mailaddr);
+		/*strcpy(G_CMD_COM_PARAM.from_mailaddr,mlinfo.from_mailaddr);*/
+	}
+	
+	/*	抽出したメールアドレスをメール情報構造体に再設定(設備番号取得に使用)*/
+	strcpy(mlinfo.from_mailaddr,G_CMD_COM_PARAM.from_mailaddr);
+	
+#ifdef DEBUG
+	printf( "[%s]From,To bfo G_CMD_COM_PARAM.from_mailaddr=%s\n", __FUNCTION__, G_CMD_COM_PARAM.from_mailaddr );
+	printf( "[%s]From,To aft G_CMD_COM_PARAM.to_mailaddr=%s\n", __FUNCTION__, G_CMD_COM_PARAM.to_mailaddr );
+#endif
+	
+	/*	送受信区分				*/
+	strcpy(mlinfo.sr_typ,"R");;
+	/*	メールタイプ			*/
+	strcpy(mlinfo.mail_typ,"9");;
+	/*	処理フラグ				*/
+	mlinfo.s_flg = 9;
+
+#ifdef DEBUG
+printf( "[%s]G_CMD_COM_PARAM.tel_no=%s\n", __FUNCTION__, G_CMD_COM_PARAM.tel_no );
+#endif
+	
+	/**** 処理対象レコードロック ****/
+	/*lock_itc_info(&mlinfo);*/
+	/********************************/
+	
+	ret = 0;
+	/*	------------------------------------------------------------------- */
+	/*	ログ書き込み														*/
+	/*	------------------------------------------------------------------- */
+	tlog("ADDMAILLOG",p_env);
+	ret = addmaillog(&mlinfo);
+	if(!ret){
+		EXEC SQL COMMIT;
+	}else if(-2 == ret){
+		/*	継続不可(DB異常)	*/
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__, G_CMD_COM_PARAM.err_msg ,G_CMD_COM_PARAM.seq);
+		/*	ファイルを作業ディレクトリから格納ディレクトリへ移動する	*/
+		if( movefile( p_dstdir, p_srcdir, p_infile ) ){
+			return( -1 );
+		}
+		/*	ファイルを閉じる													*/
+		fclose( fp );
+		return -1;
+	}else if(-1 == ret){
+		/*	継続不可(異常)	*/
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__, G_CMD_COM_PARAM.err_msg ,G_CMD_COM_PARAM.seq);
+		EXEC SQL ROLLBACK;
+		/*	ファイルを閉じる													*/
+		fclose( fp );
+		return -1;
+	}else if(2 == ret){
+		/*	継続不可(警報(シスログ出力不要))	*/
+		EXEC SQL ROLLBACK;
+		/*	ファイルを閉じる													*/
+		fclose( fp );
+		return 1;
+	}else{
+		/*	継続可能(警報)	*/
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__, G_CMD_COM_PARAM.err_msg ,G_CMD_COM_PARAM.seq);
+		EXEC SQL ROLLBACK;
+		/*	ファイルを閉じる													*/
+		fclose( fp );
+		return 1;
+	}
+	
+	/* NGメール以外は、メールタイプの特定の為、解析を行なう */
+	if(1 != G_CMD_COM_PARAM.mail_ng_flg){
+
+		ret = 0;
+		/*	------------------------------------------------------------------- */
+		/*	字句解析／構文解析処理コール											*/
+		/*	------------------------------------------------------------------- */
+		tlog("YYPARSE",p_env);
+		fseek(fp,0,SEEK_SET);
+		yyin = fp;
+		ret = yyparse ();
+		if(!ret){
+			/*	正常							*/
+			#ifdef DEBUG
+			output_sys_info(__FUNCTION__,__FILE__, __LINE__, "YYPARSE-END" ,G_CMD_COM_PARAM.seq);
+			#endif
+		}else{
+			/*	継続可能						*/
+			output_sys_err(__FUNCTION__,__FILE__, __LINE__, G_CMD_COM_PARAM.err_msg ,G_CMD_COM_PARAM.seq);
+			output_sys_err(__FUNCTION__,__FILE__, __LINE__, "YYPARSE-ERROR" ,G_CMD_COM_PARAM.seq);
+			EXEC SQL ROLLBACK;
+			/*	ファイルを閉じる													*/
+			fclose( fp );
+			return 1;
+		}
+	}
+
+	/*	------------------------------------------------------------------- */
+	/* メールフィルタ機能													*/
+	/*	------------------------------------------------------------------- */
+    ret = mail_filter(&mlinfo, p_env);
+	if(!ret){
+		/*	正常(対象なしも正常)			*/
+		#ifdef DEBUG
+		output_ap_err(__FUNCTION__,__FILE__, __LINE__, "mail_filter(end)" ,G_CMD_COM_PARAM.seq);
+		#endif
+	}else if(-2 == ret){
+		/*	継続不可(DB接続異常)			*/
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__, G_CMD_COM_PARAM.err_msg ,G_CMD_COM_PARAM.seq);
+		/*	ファイルを作業ディレクトリから格納ディレクトリへ移動する	*/
+		if( movefile( p_dstdir, p_srcdir, p_infile ) ){
+			return( -1 );
+		}
+		/*	ファイルを閉じる													*/
+		fclose( fp );
+		return -1;
+	}else if(-1 == ret){
+		/*	継続不可(DB接続異常以外)		*/
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__, G_CMD_COM_PARAM.err_msg ,G_CMD_COM_PARAM.seq);
+		EXEC SQL ROLLBACK;
+		/*	ファイルを閉じる													*/
+		fclose( fp );
+		return -1;
+	}else{
+		/*	継続可能						*/
+		output_ap_err(__FUNCTION__,__FILE__,__LINE__,G_CMD_COM_PARAM.err_msg);
+		EXEC SQL ROLLBACK;
+		/*	ファイルを閉じる													*/
+		fclose( fp );
+		return 1;
+	}
+
+	
+	/*	------------------------------------------------------------------- */
+	/* メールタイプ毎の処理を実行											*/
+	/*	------------------------------------------------------------------- */
+	tlog(G_CMD_COM_PARAM.mail_type,p_env);
+	ret = mail_type_main (G_CMD_COM_PARAM.mail_type);
+	
+	/*	------------------------------------------------------------------- */
+	/*	ファイルを閉じる													*/
+	/*	------------------------------------------------------------------- */
+	fclose( fp );
+	if(!ret){
+		/*	正常							*/
+		#ifdef DEBUG
+		output_sys_info(__FUNCTION__,__FILE__, __LINE__, "MAIL<SUCCESS>" ,G_CMD_COM_PARAM.seq);
+		#endif
+	}else if(-2 == ret){
+		/*	継続不可(DB接続異常)			*/
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__, G_CMD_COM_PARAM.err_msg ,G_CMD_COM_PARAM.seq);
+		/*	ファイルを作業ディレクトリから格納ディレクトリへ移動する	*/
+		if( movefile( p_dstdir, p_srcdir, p_infile ) ){
+			return( -1 );
+		}
+		return -1;
+	}else if(-1 == ret){
+		/*	継続不可(DB接続異常以外)		*/
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__, G_CMD_COM_PARAM.err_msg ,G_CMD_COM_PARAM.seq);
+		EXEC SQL ROLLBACK;
+		return -1;
+	}else{
+		/*	継続可能						*/
+		output_ap_err(__FUNCTION__,__FILE__,__LINE__,G_CMD_COM_PARAM.err_msg);
+		EXEC SQL ROLLBACK;
+		return 1;
+	}
+	
+    /* ------------------------------------------------------------------- */
+    /* 健康診断通知メール送信 2017.11.16                                   */
+    /* ------------------------------------------------------------------- */
+    tlog("CHECKUP_MAIL-STR",p_env);
+    checkup_mail(G_PROC_COM_PARAM.proc,G_CMD_COM_PARAM.equip_no,G_CMD_COM_PARAM.mail_type, p_env);
+
+	/*	------------------------------------------------------------------- */
+	/*	警報通知メール送信														*/
+	/*	------------------------------------------------------------------- */
+	tlog("KEIHO_MAIL-STR",p_env);
+	if(0 == G_CMD_COM_PARAM.keiho_stop){
+		keiho_mail(G_PROC_COM_PARAM.proc,G_CMD_COM_PARAM.equip_no,G_CMD_COM_PARAM.mail_type, p_env);
+	}
+
+	/*	メールタイプ			*/
+	strcpy(mlinfo.mail_typ,G_CMD_COM_PARAM.mail_type_forlog);
+	/*	処理フラグ				*/
+	mlinfo.s_flg = 1;
+
+
+	ret = 0;
+	/*	------------------------------------------------------------------- */
+	/*	ログ更新			*/
+	/*	------------------------------------------------------------------- */
+	tlog("UPDMAILLOG",p_env);
+	ret = updmaillog(&mlinfo);
+
+	if(!ret){
+		EXEC SQL COMMIT;
+	}else if(-2 == ret){
+		/*	継続不可(異常)	*/
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__, G_CMD_COM_PARAM.err_msg ,G_CMD_COM_PARAM.seq);
+		/*	ファイルを作業ディレクトリから格納ディレクトリへ移動する	*/
+		if( movefile( p_dstdir, p_srcdir, p_infile ) ){
+			return( -1 );
+		}
+		return -1;
+	}else if(-1 == ret){
+		/*	継続不可(異常)	*/
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__, G_CMD_COM_PARAM.err_msg ,G_CMD_COM_PARAM.seq);
+		EXEC SQL ROLLBACK;
+		return -1;
+	}else{
+		/*	継続可能(警報)	*/
+		output_sys_err(__FUNCTION__,__FILE__, __LINE__, G_CMD_COM_PARAM.err_msg ,G_CMD_COM_PARAM.seq);
+		EXEC SQL ROLLBACK;
+		return 1;
+	}
+	output_ap_err(__FUNCTION__,__FILE__, __LINE__, filename ,G_CMD_COM_PARAM.seq);
+
+	tlog("UNLINK",p_env);
+	unlink( filename );				/*	入力ファイルを削除				*/
+
+	/*	正常終了															*/
+	return( 0 );
+}
+
+
+/* ------------------------------------------------------------------------ */
+/*  関数名  :  checkup_mail                                                 */
+/*  機能    :  健康診断結果　通知メールを送信する                           */
+/*  関数型  :  int                                                          */
+/*  呼出形式:  checkup_mail(proc_nm,p_equip_no,p_mail_type, p_env)          */
+/*  戻り値  :  1 継続可能  -1 継続不可能  -2:Oracle未接続                   */
+/*  引数    :  char *proc_nm      プロセス名                                */
+/*             char *p_equip_no   設備番号                                  */
+/*             char *p_mail_type  メールタイプ(３桁)                        */
+/*             ENVDATA* p_env     環境変数                                  */
+/* ------------------------------------------------------------------------ */
+/*  作成  KSC  2017.11.16                                                   */
+/*  更新                                                                    */
+/* ------------------------------------------------------------------------ */
+int checkup_mail(char *proc_nm,char *p_equip_no,char *p_mail_type, ENVDATA* p_env){
+  EXEC SQL BEGIN DECLARE SECTION;
+    varchar    equip_no[20];
+    varchar    alarm_cd[5];
+    varchar    error_cd[20+1];
+    varchar    from_address[1024+1];
+    varchar    to_address[1024+1];
+    varchar    subject[3072+1];
+    varchar    mail_body[3072+1];
+    varchar    additional_header[1024+1];
+    char       body_decode[1+1];
+    int        send_flg;
+    varchar    mail_address[1024+1];
+    varchar    lcid[5+1];
+    varchar    key_dt[20];                   /*  健康診断結果 KEY1  */
+  EXEC SQL END DECLARE SECTION;
+  char      program_name[1024+1];
+  int       ret;
+  char      errmsg[2048];
+  char      cmd[8192];
+  int       sret;
+
+#ifdef DEBUG
+printf("[%s][Line:%04d]checkup_mail -- start\n", __FUNCTION__,__LINE__);
+printf("[%s][Line:%04d]param(proc_nm)[%s]\n", __FUNCTION__,__LINE__,proc_nm);
+printf("[%s][Line:%04d]param(p_equip_no)[%s]\n", __FUNCTION__,__LINE__,p_equip_no);
+printf("[%s][Line:%04d]param(p_mail_type)[%s]\n", __FUNCTION__,__LINE__,p_mail_type);
+printf("[%s][Line:%04d]DATE[%s]\n", __FUNCTION__,__LINE__,G_CMD_COM_PARAM.mail_date);
+#endif
+
+  /*  対象設備番号  */
+  strcpy(equip_no.arr,p_equip_no);
+  equip_no.len = strlen(p_equip_no);
+
+  if(0 != strcmp(p_mail_type,MTYP_HDHQHP)){
+    /*  健康診断結果 送信なし  */
+    return 0;
+  }
+
+  if(0 != strcmp(G_CMD_FDFR_REC[0].value00,"HP")){
+    /*  健康診断結果 送信なし  */
+    return 0;
+  }
+
+/*  HPの場合のみ  */
+
+
+  /*  健康診断結果 対象KEY1  */
+  strcpy(key_dt.arr,G_CMD_FDFR_REC[0].value02);
+  key_dt.len = strlen(G_CMD_FDFR_REC[0].value02);
+
+
+  /*  健康診断結果 送信あり  */
+  /*  警報コード  */
+  strcpy(alarm_cd.arr,"HP");
+  alarm_cd.len = strlen("HP");
+  strcpy(error_cd.arr,"HP");
+  error_cd.len = strlen("HP");
+
+
+
+#ifdef DEBUG
+printf("[%s][Line:%04d]EQUIP_NO[%s]\n", __FUNCTION__,__LINE__,equip_no.arr);
+printf("[%s][Line:%04d]KEY1[%s]\n", __FUNCTION__,__LINE__,key_dt.arr);
+printf("[%s][Line:%04d]ALARM_CD[%s]\n", __FUNCTION__,__LINE__,alarm_cd.arr);
+printf("[%s][Line:%04d]ERROR_CD[%s]\n", __FUNCTION__,__LINE__,error_cd.arr);
+#endif
+
+  /*  PL/SQL処理実行  */
+  /*  設備通知メールビューカーソル定義  */
+  EXEC SQL
+      DECLARE C1_CHK CURSOR FOR
+          SELECT DISTINCT
+                 LOWER(ima.MAIL_ADDRESS) AS MAIL_ADDRESS
+                ,ima.LCID
+            FROM ITS_MAIL_ADDR ima
+           WHERE 1 = ISSEND_ITS_MAIL_ADDR(ima.CUST_CD, ima.SEQ, :equip_no, :alarm_cd, :error_cd, '')
+        ORDER BY LOWER(ima.MAIL_ADDRESS), ima.LCID;
+
+  EXEC SQL open C1_CHK;
+  if (sqlca.sqlcode) {
+    strcpy( errmsg, "open C1_CHK");
+    output_ap_err(__FUNCTION__,__FILE__, __LINE__,errmsg);
+    return(2);
+  }
+
+  while(1) {
+
+    mail_address.len = 0;
+    lcid.len = 0;
+
+    EXEC SQL FETCH C1_CHK into
+             :mail_address
+            ,:lcid
+    ;
+    if (1403 == sqlca.sqlcode)  break;
+    mail_address.arr[mail_address.len] = 0x00;
+    lcid.arr[lcid.len] = 0x00;
+
+#ifdef DEBUG
+printf("[%s][Line:%04d]FETCH[%s][%s]\n", __FUNCTION__,__LINE__,mail_address.arr,lcid.arr);
+#endif
+
+    to_address.len = 0;
+    subject.len = 0;
+    mail_body.len = 0;
+    additional_header.len = 0;
+    body_decode[0] = 0x00;
+
+    /*  PL/SQL処理実行  */
+    /*  メール送信用の情報取得  */
+    EXEC SQL EXECUTE
+        BEGIN
+            GET_NOTIFICATION_CKUP(:equip_no, :key_dt , :alarm_cd, :mail_address, :lcid,
+                                  :to_address, :subject, :mail_body, :additional_header, :body_decode);
+        END;
+    END-EXEC;
+
+    to_address.arr[to_address.len] = 0x00;
+    subject.arr[subject.len] = 0x00;
+    mail_body.arr[mail_body.len] = 0x00;
+    additional_header.arr[additional_header.len] = 0x00;
+    body_decode[1] = 0x00;
+
+    send_flg = 0;
+
+    sprintf(cmd, "%s '%s' '%s' '%s' '%s' '%s' '%s'",
+            p_env->snd_ml_shell
+           ,p_env->from_address
+           ,to_address.arr
+           ,subject.arr
+           ,mail_body.arr
+           ,additional_header.arr
+           ,body_decode
+    );
+
+#ifdef DEBUG
+printf("[%s][Line:%04d]CMD[%s]\n", __FUNCTION__,__LINE__,cmd);
+#endif
+
+    sret = system(cmd);
+    if (sret) {
+      output_sys_err(__FUNCTION__,__FILE__, __LINE__, "顧客メール送信シェルが起動できません。" ,G_CMD_COM_PARAM.seq);
+    }
+
+  }
+
+#ifdef DEBUG
+printf("[%s][Line:%04d]checkup_mail -- end\n", __FUNCTION__,__LINE__);
+#endif
+
+}
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	keiho_mail													*/
+/*	機能	:	警報メールを送信する										*/
+/*	関数型	:	int															*/
+/*	呼出形式:	keiho_mail(proc_nm,p_equip_no,p_mail_type, p_env)			*/
+/*	戻り値	:	1 継続可能	-1 継続不可能	-2:Oracle未接続					*/
+/*	引数	:	char *proc_nm		プロセス名								*/
+/*				char *p_equip_no	設備番号								*/
+/*				char *p_mail_type	メールタイプ(３桁)						*/
+/*				ENVDATA* p_env		環境変数								*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2009.01.22												*/
+/*	更新																	*/
+/* ------------------------------------------------------------------------ */
+int keiho_mail(char *proc_nm,char *p_equip_no,char *p_mail_type, ENVDATA* p_env){
+	EXEC SQL BEGIN DECLARE SECTION;
+		varchar		equip_no[20];
+		varchar		alarm_cd[5];
+		varchar		error_cd[20+1];
+		int			alarm_status;
+		varchar		from_address[1024+1];
+		varchar		to_address[1024+1];
+		varchar		subject[3072+1];
+		varchar		mail_body[3072+1];
+		varchar		additional_header[1024+1];
+		char		body_decode[1+1];
+		varchar		hassei_dt[20];
+		int			send_flg;
+		char		alarm_grp_cd[2+1];
+		varchar		cust_cd[10];		/*6桁*/
+		varchar		chk_send[2+1];
+	EXEC SQL END DECLARE SECTION;
+	char			program_name[1024+1];
+	int				ret;
+	char			errmsg[2048];
+	char			cmd[8192];
+	int				sret;
+
+#ifdef DEBUG
+printf("[%s][Line:%04d]keiho_mail -- start\n", __FUNCTION__,__LINE__);
+printf("[%s][Line:%04d]param(proc_nm)[%s]\n", __FUNCTION__,__LINE__,proc_nm);
+printf("[%s][Line:%04d]param(p_equip_no)[%s]\n", __FUNCTION__,__LINE__,p_equip_no);
+printf("[%s][Line:%04d]param(p_mail_type)[%s]\n", __FUNCTION__,__LINE__,p_mail_type);
+#endif
+#ifdef DEBUG
+printf("[%s][Line:%04d]DATE[%s]\n", __FUNCTION__,__LINE__,G_CMD_COM_PARAM.mail_date);
+#endif
+	
+	/*	対象設備番号		*/
+	strcpy(equip_no.arr,p_equip_no);
+	equip_no.len = strlen(p_equip_no);
+	
+	if(0 == strcmp(p_mail_type,MTYP_SC)){
+		
+		/*警報送信あり*/
+		/*	警報コード	*/
+		strcpy(alarm_cd.arr,"SC");
+		alarm_cd.len = strlen("SC");
+		strcpy(error_cd.arr,"SC");
+		error_cd.len = strlen("SC");
+		/* 警報ステータス */
+		alarm_status = 1;
+		
+	}else if(0 == strcmp(p_mail_type,MTYP_SA)){
+
+		/*警報送信あり*/
+		/*	警報コード	*/
+		strcpy(alarm_cd.arr,"SA");
+		alarm_cd.len = strlen("SA");
+		strcpy(error_cd.arr,"SA");
+		error_cd.len = strlen("SA");
+		/* 警報ステータス */
+		alarm_status = G_CMD_SA_PARAM.abnormal_flg;
+
+	}else if(0 == strcmp(p_mail_type,MTYP_BT)){
+
+		/*警報送信あり*/
+		/*	警報コード	*/
+		strcpy(alarm_cd.arr,"BT");
+		alarm_cd.len = strlen("BT");
+		strcpy(error_cd.arr,"BT");
+		error_cd.len = strlen("BT");
+		/* 警報ステータス */
+		alarm_status = G_CMD_BT_PARAM.abnormal_flg;
+
+	}else if(0 == strcmp(p_mail_type,MTYP_SS)){
+
+		/*警報送信あり*/
+		/*	警報コード	*/
+		strcpy(alarm_cd.arr,"SS");
+		alarm_cd.len = strlen("SS");
+		strcpy(error_cd.arr,"SS");
+		error_cd.len = strlen("SS");
+		/* 警報ステータス */
+		if(!strcmp(G_CMD_SS_PARAM.value01,"1")){
+		    alarm_status = 1;
+		}else{
+		    alarm_status = 0;
+		}
+
+	}else if(0 == strcmp(p_mail_type,MTYP_SR)){
+
+		/*警報送信あり*/
+		/*	警報コード	*/
+		strcpy(alarm_cd.arr,"SR");
+		alarm_cd.len = strlen("SR");
+		strcpy(error_cd.arr,"SR");
+		error_cd.len = strlen("SR");
+		/* 警報ステータス */
+		if(!strcmp(G_CMD_SR_PARAM.value01,"1")){
+		    alarm_status = 1;
+		}else{
+		    alarm_status = 0;
+		}
+
+	}else if(0 == strcmp(p_mail_type,MTYP_SG)){
+
+		/*警報送信あり*/
+		/*	警報コード	*/
+		strcpy(alarm_cd.arr,"SG");
+		alarm_cd.len = strlen("SG");
+		strcpy(error_cd.arr,"SG");
+		error_cd.len = strlen("SG");
+		/* 警報ステータス */
+		if(!strcmp(G_CMD_SG_PARAM.value01,"1")){
+		    alarm_status = 1;
+		}else{
+		    alarm_status = 0;
+		}
+
+	}else if(0 == strcmp(p_mail_type,MTYP_SU)){
+
+		/*警報送信あり*/
+		/*	警報コード	*/
+		strcpy(alarm_cd.arr,"SU");
+		alarm_cd.len = strlen("SU");
+		strcpy(error_cd.arr,"SU");
+		error_cd.len = strlen("SU");
+		/* 警報ステータス */
+		if(!strcmp(G_CMD_SU_PARAM.value01,"1")){
+		    alarm_status = 1;
+		}else{
+		    alarm_status = 0;
+		}
+
+	}else if(0 == strcmp(p_mail_type,MTYP_XX)
+			|| 0 == strcmp(p_mail_type,MTYP_XX_V7)){
+
+		/*警報送信あり*/
+		/*警報発生日付*/
+		/*	警報コード	*/
+		strcpy(alarm_cd.arr,G_CMD_XX_PARAM.alarm_cd);
+		alarm_cd.len = strlen(G_CMD_XX_PARAM.alarm_cd);
+		strcpy(error_cd.arr,G_CMD_XX_PARAM.error_cd);
+		error_cd.len = strlen(G_CMD_XX_PARAM.error_cd);
+		/* 警報ステータス */
+		alarm_status = G_CMD_XX_PARAM.alarm_status;
+
+	}else{
+		/*警報送信なし*/
+		return 0;
+	}
+	
+	/* メール日付 */
+	sprintf(hassei_dt.arr, "%s", G_CMD_COM_PARAM.mail_date);
+	hassei_dt.len = strlen(hassei_dt.arr);
+	
+	/* 送信許可チェック */
+	chk_send.arr[0] = 0x00;
+	chk_send.len = 0;
+	
+#ifdef DEBUG
+printf("[%s][Line:%04d]MAIL.BODY_DATE(hassei_dt)[%s]\n", __FUNCTION__,__LINE__,hassei_dt.arr);
+printf("[%s][Line:%04d]EQUIP_NO[%s]\n", __FUNCTION__,__LINE__,equip_no.arr);
+printf("[%s][Line:%04d]ALARM_CD[%s]\n", __FUNCTION__,__LINE__,alarm_cd.arr);
+printf("[%s][Line:%04d]ERROR_CD[%s]\n", __FUNCTION__,__LINE__,error_cd.arr);
+printf("[%s][Line:%04d]EVENT[%d]\n", __FUNCTION__,__LINE__,alarm_status);
+#endif
+	
+    /*  PL/SQL処理実行  */
+    /*  発生日付のパッケージ変数登録 */
+    EXEC SQL EXECUTE
+        BEGIN
+            MAIL.BODY_DATE(to_date(:hassei_dt,'yyyymmddhh24miss'));
+            MAIL.CHK_KEIHOU_MAIL(:equip_no,:alarm_cd,:error_cd,:alarm_status,:chk_send);
+        END;
+    END-EXEC;
+    chk_send.arr[chk_send.len] = 0x00;
+    
+    if (0 != strcmp(chk_send.arr,"OK")){
+#ifdef DEBUG
+printf("[%s][Line:%04d]keiho_mail -- 連発抑止(%s)\n", __FUNCTION__,__LINE__,chk_send.arr);
+#endif
+		/*警報送信なし*/
+		return 0;
+	}
+    
+    /*  PL/SQL処理実行  */
+	EXEC SQL
+	declare C1 cursor for
+	SELECT MAIL_ADDRESS AS TO_ADDRESS
+	      ,SUBJECT AS SUBJECT
+	      ,TEXT AS MAIL_BODY
+	      ,ADDITIONAL_HEADER AS ADDITIONAL_HEADER
+	      ,BODY_DECODE AS BODY_DECODE
+	      ,ALARM_GRP_CD
+	FROM V_M_NOTIFICATION
+	WHERE 1 = 1
+	  AND EQUIP_NO = :equip_no
+	  AND ALARM_CD = :alarm_cd
+	  AND ERROR_CD = :error_cd
+	  AND EVENT = :alarm_status
+	;
+
+	EXEC SQL open C1;
+	if (sqlca.sqlcode) {
+		strcpy( errmsg, "open C1");
+		output_ap_err(__FUNCTION__,__FILE__, __LINE__,errmsg);
+		return(2);
+	}
+
+	while(1) {
+		to_address.len = 0;
+		subject.len = 0;
+		mail_body.len = 0;
+		additional_header.len = 0;
+		body_decode[0] = 0x00;
+		
+		EXEC SQL FETCH C1 into
+			 :to_address
+			,:subject
+			,:mail_body
+			,:additional_header
+			,:body_decode
+			,:alarm_grp_cd
+		;
+		if (1403 == sqlca.sqlcode)  break;
+		to_address.arr[to_address.len] = 0x00;
+		subject.arr[subject.len] = 0x00;
+		mail_body.arr[mail_body.len] = 0x00;
+		additional_header.arr[additional_header.len] = 0x00;
+		body_decode[1] = 0x00;
+		
+#ifdef DEBUG
+printf("[%s][Line:%04d]FETCH[%s][%s][%s][%s][%s]\n", __FUNCTION__,__LINE__
+		,to_address.arr
+		,subject.arr
+		,mail_body.arr
+		,additional_header.arr
+		,body_decode
+		);
+#endif
+		
+		send_flg = 0;
+		
+		sprintf(cmd, "%s '%s' '%s' '%s' '%s' '%s' '%s'",
+				 p_env->snd_ml_shell
+				,p_env->from_address
+				,to_address.arr
+				,subject.arr
+				,mail_body.arr
+				,additional_header.arr
+				,body_decode
+				);
+#ifdef DEBUG
+printf("[%s][Line:%04d]CMD[%s]\n", __FUNCTION__,__LINE__,cmd
+		);
+#endif
+
+		sret = system(cmd);
+		if (sret) {
+			output_sys_err(__FUNCTION__,__FILE__, __LINE__, "顧客メール送信シェルが起動できません。" ,G_CMD_COM_PARAM.seq);
+		}
+	
+        /*  PL/SQL処理実行  */
+        /*  発生日付のパッケージ変数登録 */
+        EXEC SQL EXECUTE
+            BEGIN
+                MAIL.COUNTUP_KEIHOU_MAIL(:equip_no,:alarm_cd,:error_cd,:alarm_status);
+            END;
+        END-EXEC;
+	}
+	
+#ifdef DEBUG
+printf("[%s][Line:%04d]keiho_mail -- end\n", __FUNCTION__,__LINE__);
+#endif
+	
+
+}
+
+
+
+
+
+/* ------------------------------------------------------------------------ */
+/*	関数名	:	mail_filter													*/
+/*	機能	:	メールフィルタの条件判定及びアクション(メール送信)を行う	*/
+/*	関数型	:	int															*/
+/*	呼出形式:	mail_filter(MAIL_INFO*)										*/
+/*	戻り値	:	-2 異常(DB異常)		-1 異常(継続不可)	0 正常終了 			*/
+/*				 1 警報(継続可能) 											*/
+/*				 2 警報(継続可能(呼び出し元でシスログ出力不要))				*/
+/*				 9 メール送信失敗											*/
+/*	引数	:	メール情報構造の定義										*/
+/*																			*/
+/* ------------------------------------------------------------------------ */
+/*	作成	KSS	2016.05.13													*/
+/*	更新																	*/
+/* ------------------------------------------------------------------------ */
+int		mail_filter(MAIL_INFO* m_info, ENVDATA* p_env){
+
+    char			errmsg[ORA_ERR_MSG_MAX_LEN + 1];
+    int				msglen;
+    int				buflen;
+	char			cmd[8192];
+	int				sret;
+
+	EXEC SQL BEGIN DECLARE SECTION;
+
+		varchar		mail_body[BODY_MAX_LEN+1];				/* メールボディ */
+
+		varchar		to_addr[100+1];							/* 送信先 */
+
+		varchar		from_addr[100+1];						/* 送信元 */
+
+		varchar		filter_key1[50+1];						/* フィルタKEY */
+		short		ind_filter_key1;
+
+		varchar		send_to_address[1000+1];				/* 送信用：メールアドレス */
+
+		varchar		send_subject[3072+1];					/* 送信用：件名(ENC済) */
+
+		varchar		send_mail_body[3072+1];					/* 送信用：本文(ENC済) */
+
+		varchar		additional_header[1024+1];				/* 拡張ヘッダ */
+		
+		char		body_decode[1+1];
+
+		varchar		mail_typ[MAIL_TYP_MAX_LEN+1];			/* メールタイプ */
+
+	EXEC SQL END DECLARE SECTION;
+
+	EXEC SQL WHENEVER SQLERROR GOTO sql_error;
+
+#ifdef DEBUG
+printf("[%s][Line:%04d]<FILTER>\n",__FUNCTION__,__LINE__);
+#endif
+
+	vcstrncpy(&filter_key1, "", strlen(""));
+	ind_filter_key1 = 0;
+	vcstrncpy(&to_addr, m_info->to_mailaddr, strlen(m_info->to_mailaddr));
+	vcstrncpy(&from_addr, m_info->from_mailaddr, strlen(m_info->from_mailaddr));
+	vcstrncpy(&mail_body, m_info->body, strlen(m_info->body));
+	vcstrncpy(&mail_typ, m_info->mail_typ, strlen(m_info->mail_typ));
+	vcstrncpy(&send_to_address, "", strlen(""));
+	vcstrncpy(&send_subject, "", strlen(""));
+	vcstrncpy(&send_mail_body, "", strlen(""));
+	vcstrncpy(&additional_header, "", strlen(""));
+	body_decode[0] = '0';
+	body_decode[1] = 0x00;
+
+#ifdef DEBUG
+printf("[%s][Line:%04d]<CHK_FILTER_MAIL>[%s][%s][%s]\n",__FUNCTION__,__LINE__,to_addr.arr,from_addr.arr,mail_body.arr);
+#endif
+
+
+	EXEC SQL EXECUTE
+		BEGIN
+			CHK_FILTER_MAIL(     :to_addr
+                                ,:from_addr
+                                ,:mail_body
+                                ,:filter_key1:ind_filter_key1);
+		END;
+	END-EXEC;
+
+	filter_key1.arr[filter_key1.len] = 0x00;
+
+	if(0 == filter_key1.len){
+#ifdef DEBUG
+printf("[%s][Line:%04d][%s] NO MATCH\n",__FUNCTION__,__LINE__,send_subject.arr);
+#endif
+		return (0);
+	}
+
+#ifdef DEBUG
+printf("[%s][Line:%04d][%s] MATCH![%s]\n",__FUNCTION__,__LINE__,send_subject.arr,filter_key1.arr);
+#endif
+
+	/* 一件のみ返却される想定(複数返却は要件次第で検討する) */
+	EXEC SQL EXECUTE
+		BEGIN
+			GET_FILTER_MAIL_INFO(:filter_key1
+                                ,:from_addr
+                                ,:mail_body
+                                ,:mail_typ
+                                ,:send_to_address
+                                ,:send_subject
+                                ,:send_mail_body
+                                ,:additional_header);
+		END;
+	END-EXEC;
+
+	send_to_address.arr[send_to_address.len] = 0x00;
+	send_subject.arr[send_subject.len] = 0x00;
+	send_mail_body.arr[send_mail_body.len] = 0x00;
+	additional_header.arr[additional_header.len] = 0x00;
+
+#ifdef DEBUG
+printf("[%s][Line:%04d][%s]\n",__FUNCTION__,__LINE__,send_subject.arr);
+#endif
+
+
+
+		sprintf(cmd, "%s '%s' '%s' '%s' '%s' '%s' '%s'",
+				 p_env->snd_ml_shell
+				,p_env->from_address
+				,send_to_address.arr
+				,send_subject.arr
+				,send_mail_body.arr
+				,additional_header.arr
+				,body_decode
+				);
+
+#ifdef DEBUG
+printf("[%s][Line:%04d]CMD[%s]\n", __FUNCTION__,__LINE__,cmd
+		);
+#endif
+
+		sret = system(cmd);
+		if (sret) {
+			output_sys_err(__FUNCTION__,__FILE__, __LINE__, "mail_filter system(cmd) error" ,G_CMD_COM_PARAM.seq);
+			return( 9 );
+		}
+	
+
+
+
+	return( 0 );
+
+sql_error:
+
+    /*  エラーメッセージ取得  */
+    buflen = ORA_ERR_MSG_MAX_LEN;
+    sqlglm( errmsg, &buflen, &msglen );
+    errmsg[msglen] = '\0';
+	
+	sprintf(G_CMD_COM_PARAM.err_msg,"mail_filter[%s]",errmsg);
+
+#ifdef DEBUG
+printf("[%s][Line:%04d]mail_filter error[%s]\n",__FUNCTION__,__LINE__,errmsg);
+#endif
+
+    /*  エラーコード判定結果取得  */
+    return( chk_oraerr( sqlca.sqlcode ) );
+}
+
+

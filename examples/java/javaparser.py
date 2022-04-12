@@ -5,8 +5,9 @@ PyBison file automatically generated from grammar file javaparser.y
 You can edit this module, or import it and subclass the Parser class
 """
 
+import sys
 
-from bison import BisonParser, BisonNode
+from bison import BisonParser, BisonNode, BisonSyntaxError
 
 bisonFile = 'javaparser.y'  # original bison file
 lexFile = 'javaparser.l'    # original flex file
@@ -2151,34 +2152,48 @@ void comment()
     # -----------------------------------------
 
 
-def main():
-    import argparse
-    parser = argparse.ArgumentParser(prog=f"PyBison Java Example (derived from {bisonFile} and {lexFile})")
-    parser.add_argument("-k", "--keepfiles", action="store_true",
-                        help="Keep temporary files used in building parse engine lib")
-    parser.add_argument("-v", "--verbose", action="store_true",
-                        help="Enable verbose messages while parser is running")
-    parser.add_argument("-d", "--debug", action="store_true",
-                        help="Enable garrulous debug messages from parser engine")
-    parser.add_argument("filename", type=str, nargs="*",
-                        help="path of a file to parse, defaults to stdin")
-    args = parser.parse_args()
-    # replace default value with None
-    if isinstance(args.filename, list) and len(args.filename) == 0:
-        args.filename = None
+def usage():
+    print('%s: PyBison parser derived from %s and %s' % (sys.argv[0], bisonFile, lexFile))
+    print('Usage: %s [-k] [-v] [-d] [filename]' % sys.argv[0])
+    print('  -k       Keep temporary files used in building parse engine lib')
+    print('  -v       Enable verbose messages while parser is running')
+    print('  -d       Enable garrulous debug messages from parser engine')
+    print('  filename path of a file to parse, defaults to stdin')
 
-    p = Parser(verbose=args.verbose, keepfiles=args.keepfiles)
-    forrest = []
-    if args.filename is None:
-        print("(Reading from standard input - please type stuff)")
-        tree = p.run(file=None, debug=args.debug)
-        forrest.append(tree)
-    else:
-        for fp in args.filename:
-            tree = p.run(file=fp, debug=args.debug)
-            forrest.append(tree)
-    return forrest
+
+def main(*args):
+    """
+    Unit-testing func
+    """
+
+    keepfiles = 0
+    verbose = 0
+    debug = 0
+    filename = None
+
+    for s in ['-h', '-help', '--h', '--help', '-?']:
+        if s in args:
+            usage()
+            sys.exit(0)
+
+    if len(args) > 0:
+        if '-k' in args:
+            keepfiles = 1
+            args.remove('-k')
+        if '-v' in args:
+            verbose = 1
+            args.remove('-v')
+        if '-d' in args:
+            debug = 1
+            args.remove('-d')
+    if len(args) > 0:
+        filename = args[0]
+
+    p = Parser(verbose=verbose, keepfiles=keepfiles)
+    tree = p.run(file=filename, debug=debug)
+    return tree
 
 
 if __name__ == '__main__':
-    main()
+    main(*(sys.argv[1:]))
+
