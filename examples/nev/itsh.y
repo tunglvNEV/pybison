@@ -206,6 +206,8 @@ extern char *itc_strdup(const char *);
 %type	<strval>	CMD_TOKEN_SSID
 %type	<strval>	CMD_TOKEN_KL
 
+%start MAIL
+
 %%
 
 
