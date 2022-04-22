@@ -397,9 +397,11 @@ cdef class ParserEngine:
 
             # added by Eugene Oden
             #target, options = doc.split(":")
-            doc = re.sub(unquoted % ";", "", doc)
-
-            s = re.split(unquoted % ":", doc)
+            # doc = re.sub(unquoted % ";", "", doc)
+            # doc = re.sub("\\n([\t ]+)", " ", doc)
+            doc = re.sub(";", "", doc)
+            s = re.split("\s:", doc)
+            # s = re.split("\s:", doc)
 
             target, options = s
             target = target.strip()
@@ -414,11 +416,14 @@ cdef class ParserEngine:
             for o in opts1:
                 o = o.strip()
 
+                # o= re.sub("[\s\n\t]+{", "{", o)
+                # o= re.sub("\n([\t ]+)", "", o)
+
                 tmp.append(reSpaces.split(o))
             options = tmp
 
             rules.append((target, options))
-
+        print("End log")
         # and render rules to grammar file
         for rule in rules:
             try:

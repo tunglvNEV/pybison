@@ -105,7 +105,7 @@ def bisonToPython(bisonfileName, lexfileName, pyfileName, generateClasses=0):
     # -------------------------------------------------------------
     # process rules
     rulesRaw = re.sub('\\n([\t ]+)', ' ', rulesRaw) # join broken lines
-    rulesLines = filter(lambda s: s != '', map(str.strip, re.split(unquoted % ';', rulesRaw)))
+    rulesLines = filter(lambda s: s != '', map(str.strip, re.split('\n;', rulesRaw)))
 
     rules = []
     for rule in rulesLines:
@@ -114,7 +114,7 @@ def bisonToPython(bisonfileName, lexfileName, pyfileName, generateClasses=0):
 
         #tgt, terms = rule.split(':')
         try:
-            tgt, terms = re.split(unquoted % ':', rule)
+            tgt, terms = re.split('\s:', rule)
         except ValueError:
             print ('Error in rule: %s' % rule)
             raise
@@ -126,7 +126,7 @@ def bisonToPython(bisonfileName, lexfileName, pyfileName, generateClasses=0):
 
         tmp = []
         #for t in terms.split('|'):
-        for t in re.split(unquoted % r'\|', terms):
+        for t in re.split('|', terms):
 
             t = t.strip()
             tmp.append(reSpaces.split(t))
