@@ -1,19 +1,19 @@
-
-
-
-
-
-
-
-
-
-
+# ========================================================================
+#  コベルコ建機様向け用　稼動機管理システム               
+#  メール登録処理
+#  ファイル名  ：  makefile                                               
+# ------------------------------------------------------------------------
+#  作成    SKCS    2009.02.13                                             
+#  更新                                                                   
+#         1.00     2011.10.31 GMERIT対応
+#                                                                         
+# ========================================================================
 
 CFLAGS = -I../include -I./ -I$(ORACLE_HOME)/precomp/public
 
-
+#DEBUG_FLAGS = -DDEBUG -ggdb -DDEBUG_TLOG
 DEBUG_FLAGS2 = -DDEBUG_TLOG
-
+#YAC_DEBUG = -DYYERROR_VERBOSE -DYYDEBUG
 
 LDFLAGS = -L../lib -L$(ORACLE_HOME)/lib
 LIBS =
@@ -54,11 +54,11 @@ all: $(TARGET)
 	@echo Done.
 
 lex.yy.c : itsh.l itsh.tab.c
-
+#	flex -d itsh.l
 	flex -p itsh.l
 
 itsh.tab.c : itsh.y
-
+#	bison -v -t -d itsh.y
 	bison -d itsh.y
 	$(CC) -c $(YAC_DEBUG) $(DEBUG_FLAGS) $(DEBUG_FLAGS2) itsh.tab.c
 
