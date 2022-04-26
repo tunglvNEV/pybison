@@ -248,6 +248,7 @@ cdef class ParserEngine:
 
         handle = bisondynlib_open(libFilename)
         if handle == NULL:
+            print("fffffff")
             raise Exception('library loading failed!')
         self.libHandle = handle
 

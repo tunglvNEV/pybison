@@ -1,0 +1,532 @@
+/* ======================================================================== */
+/*	コベルコ建機様向け用　稼動機管理システム								*/
+/*	受信メールテキストデータ→DB変換　バッチプログラム POSコマンド処理部	*/
+/*	ファイル名	：	merit_cns.pc											*/
+/*	説明		：	グローバル変数の定義									*/
+/* ------------------------------------------------------------------------ */
+/*	作成	SKCS	2009.02.01												*/
+/*	更新																	*/
+/*			KSC		2011.10.25	ミニ流用：国外／オーブコム２対応			*/
+/*																			*/
+/* ======================================================================== */
+
+/* ------------------------------------------------------------------------ */
+/*	インクルードヘッダ定義													*/
+/* ------------------------------------------------------------------------ */
+#include	<stdio.h>
+#include	"merit_bat.h"				/*	共通ヘッダ						*/
+
+PROC_COM_PARAM		G_PROC_COM_PARAM;
+CMD_COM_PARAM		G_CMD_COM_PARAM;
+CMD_POS_PARAM		G_CMD_POS_PARAM;
+CMD_H_PARAM			G_CMD_H_PARAM;
+CMD_A_PARAM			G_CMD_A_PARAM;
+CMD_EG_PARAM		G_CMD_EG_PARAM;
+CMD_AMOF_PARAM		G_CMD_AMOF_PARAM;
+CMD_AMON_PARAM		G_CMD_AMON_PARAM;
+CMD_AM_PARAM		G_CMD_AM_PARAM;
+CMD_CL_PARAM		G_CMD_CL_PARAM;
+CMD_SC_PARAM		G_CMD_SC_PARAM;
+CMD_CM0_PARAM		G_CMD_CM0_PARAM;
+CMD_CM1_PARAM		G_CMD_CM1_PARAM;
+CMD_D0_PARAM		G_CMD_D0_PARAM;
+CMD_D1_PARAM		G_CMD_D1_PARAM;
+CMD_D2_PARAM		G_CMD_D2_PARAM;
+CMD_D3_PARAM		G_CMD_D3_PARAM;
+CMD_M0_PARAM		G_CMD_M0_PARAM;
+CMD_M1_PARAM		G_CMD_M1_PARAM;
+CMD_M2_PARAM		G_CMD_M2_PARAM;
+CMD_M3_PARAM		G_CMD_M3_PARAM;
+CMD_M4_PARAM		G_CMD_M4_PARAM;
+CMD_M5_PARAM		G_CMD_M5_PARAM;
+CMD_M6_PARAM		G_CMD_M6_PARAM;
+CMD_M7_PARAM		G_CMD_M7_PARAM;
+CMD_M8_PARAM		G_CMD_M8_PARAM;
+CMD_SA_PARAM		G_CMD_SA_PARAM;
+CMD_BT_PARAM		G_CMD_BT_PARAM;
+CMD_I_PARAM			G_CMD_I_PARAM;
+CMD_F_PARAM			G_CMD_F_PARAM;
+CMD_EC_PARAM		G_CMD_EC_PARAM;
+CMD_T_PARAM			G_CMD_T_PARAM;
+CMD_P_PARAM			G_CMD_P_PARAM;
+CMD_R_PARAM			G_CMD_R_PARAM;
+CMD_C_PARAM			G_CMD_C_PARAM;
+CMD_N_PARAM			G_CMD_N_PARAM;
+CMD_W_PARAM			G_CMD_W_PARAM;
+CMD_U_PARAM			G_CMD_U_PARAM;
+CMD_J_PARAM			G_CMD_J_PARAM;
+CMD_FC_PARAM		G_CMD_FC_PARAM;
+CMD_HC_PARAM		G_CMD_HC_PARAM;
+CMD_OV_PARAM		G_CMD_OV_PARAM;
+CMD_FT_PARAM		G_CMD_FT_PARAM;
+CMD_FS_PARAM		G_CMD_FS_PARAM;
+CMD_LC_PARAM		G_CMD_LC_PARAM;
+CMD_HS_PARAM		G_CMD_HS_PARAM;
+CMD_HE_PARAM		G_CMD_HE_PARAM;
+CMD_HF_PARAM		G_CMD_HF_PARAM;
+CMD_HH_PARAM		G_CMD_HH_PARAM;
+CMD_HL_PARAM		G_CMD_HL_PARAM;
+CMD_XX_PARAM		G_CMD_XX_PARAM;
+CMD_SD1_PARAM		G_CMD_SD1_PARAM;
+CMD_SD2_PARAM		G_CMD_SD2_PARAM;
+CMD_SD3_PARAM		G_CMD_SD3_PARAM;
+CMD_AH_PARAM		G_CMD_AH_PARAM;
+CMD_PN_PARAM		G_CMD_PN_PARAM;
+CMD_VR_PARAM		G_CMD_VR_PARAM;
+CMD_NP_PARAM		G_CMD_NP_PARAM;
+
+CMD_MC_PARAM		G_CMD_MC_PARAM;
+CMD_MT_PARAM		G_CMD_MT_PARAM;
+CMD_SW_PARAM		G_CMD_SW_PARAM;
+CMD_ADJUST_PARAM	G_CMD_EA_PARAM;
+CMD_ADJUST_PARAM	G_CMD_PA_PARAM;
+CMD_ADJUST_PARAM	G_CMD_PB_PARAM;
+CMD_ADJUST_PARAM	G_CMD_PC_PARAM;
+CMD_ADJUST_PARAM	G_CMD_UA_PARAM;
+CMD_ADJUST_PARAM	G_CMD_UB_PARAM;
+CMD_ST_PARAM		G_CMD_ST_PARAM;
+CMD_SL_PARAM		G_CMD_SL_PARAM;
+CMD_TD_PARAM		G_CMD_TD_PARAM;
+
+CMD_T_PARAM			*pG_CMD_T_PARAM;
+CMD_P_PARAM			*pG_CMD_P_PARAM;
+CMD_SD2_PARAM		*pG_CMD_SD2_PARAM;
+CMD_AH_PARAM		*pG_CMD_AH_PARAM;
+
+CMD_C20X5_PARAM		G_CMD_HOZEN_PARAM[MAX_HOZEN_PARAM];
+CMD_C20X5_PARAM		G_CMD_DAILY_EXT_PARAM[MAX_HANYO_PARAM];
+
+CMD_C30X1_PARAM  G_CMD_HA_PARAM;
+CMD_C30X1_PARAM  G_CMD_LK_PARAM;
+CMD_C30X1_PARAM  G_CMD_YD_PARAM;
+CMD_C30X1_PARAM  G_CMD_OT_PARAM;
+CMD_C30X1_PARAM  G_CMD_M_PARAM;
+CMD_C30X1_PARAM  G_CMD_JH_PARAM;
+CMD_C30X1_PARAM  G_CMD_JS_PARAM;
+CMD_C30X1_PARAM  G_CMD_JE_PARAM;
+CMD_C30X1_PARAM  G_CMD_AB_PARAM;
+CMD_C30X1_PARAM  G_CMD_SS_PARAM;
+CMD_C30X1_PARAM  G_CMD_SR_PARAM;
+CMD_C30X1_PARAM  G_CMD_SG_PARAM;
+CMD_C30X1_PARAM  G_CMD_SU_PARAM;
+CMD_C30X1_PARAM  G_CMD_HD_PARAM;
+CMD_C30X1_PARAM  G_CMD_HQ_PARAM;
+CMD_C30X10_PARAM G_CMD_HP_PARAM;
+CMD_C30X1_PARAM  G_CMD_DA_PARAM;
+CMD_C200X5_PARAM  G_CMD_DG_PARAM;
+
+CMD_HANYO_PARAM  G_CMD_HANYO_REC[MAX_HANYO_REC];
+CMD_HANYO06_PARAM  G_CMD_FDFR_REC[MAX_FDFR_REC];
+
+CMD_C30X5_PARAM  G_CMD_LKOK_PARAM;
+
+CMD_C30X1_PARAM  G_CMD_AE_REC[MAX_AE_REC];
+CMD_HANYO06_PARAM G_CMD_AR_REC[MAX_AR_REC];
+
+CMD_HANYO06_PARAM G_CMD_RR_REC[MAX_RR_REC];
+CMD_SSID_PARAM  G_CMD_SSID_PARAM;
+CMD_C30X10_PARAM  G_CMD_KL_REC[MAX_KL_REC];
+
+
+/* ★注意★：init_cmd_param　freeAlloc_point　での領域初期化、開放 */
+
+
+
+void init_cmd_param(){
+#ifdef DEBUG
+printf( "[%s]freeAlloc_point(Call)\n", __FUNCTION__ );
+#endif
+
+    freeAlloc_point();
+
+#ifdef DEBUG
+printf( "[%s] init \n", __FUNCTION__ );
+#endif
+
+    /*  メール共通構造体                                */
+    memset(&G_CMD_COM_PARAM,0x00,sizeof(CMD_COM_PARAM));
+    /*  位置コマンド構造体                              */
+    memset(&G_CMD_POS_PARAM,0x00,sizeof(CMD_POS_PARAM));
+    /*  アワメータコマンド構造体                        */
+    memset(&G_CMD_H_PARAM,0x00,sizeof(CMD_H_PARAM));
+    /*  エリア判定コマンド構造体                        */
+    memset(&G_CMD_A_PARAM,0x00,sizeof(CMD_A_PARAM));
+    /*  エンジン稼働情報コマンド構造体                  */
+    memset(&G_CMD_EG_PARAM,0x00,sizeof(CMD_EG_PARAM));
+    /*  侵入警報有効時間設定(AMOF)コマンド構造体        */
+    memset(&G_CMD_AMOF_PARAM,0x00,sizeof(CMD_AMOF_PARAM));
+    /*  侵入警報有効時間設定(AMON)コマンド構造体        */
+    memset(&G_CMD_AMON_PARAM,0x00,sizeof(CMD_AMON_PARAM));
+    /*  侵入警報有効時間設定(AM)コマンド構造体          */
+    memset(&G_CMD_AM_PARAM,0x00,sizeof(CMD_AM_PARAM));
+    /*  エリア設定コマンド構造体                        */
+    memset(&G_CMD_CL_PARAM,0x00,sizeof(CMD_CL_PARAM));
+    /*  侵入警報構造体                                  */
+    memset(&G_CMD_SC_PARAM,0x00,sizeof(CMD_SC_PARAM));
+    /*  通信停止応答コマンド構造体                      */
+    memset(&G_CMD_CM0_PARAM,0x00,sizeof(CMD_CM0_PARAM));
+    /*  通信再開応答コマンド構造体                      */
+    memset(&G_CMD_CM1_PARAM,0x00,sizeof(CMD_CM1_PARAM));
+    /*  通信テスト応答(電話番号)コマンド構造体          */
+    memset(&G_CMD_D0_PARAM,0x00,sizeof(CMD_D0_PARAM));
+    /*  通信テスト応答(IPアドレス)コマンド構造体        */
+    memset(&G_CMD_D1_PARAM,0x00,sizeof(CMD_D1_PARAM));
+    /*  通信テスト応答(西暦)コマンド構造体              */
+    memset(&G_CMD_D2_PARAM,0x00,sizeof(CMD_D2_PARAM));
+    /*  通信テスト応答(メカトロ有無)コマンド構造体      */
+    memset(&G_CMD_D3_PARAM,0x00,sizeof(CMD_D3_PARAM));
+    /*  通信確認応答(受信メール総容量)コマンド構造体    */
+    memset(&G_CMD_M0_PARAM,0x00,sizeof(CMD_M0_PARAM));
+    /*  通信確認応答(送信メール総容量)コマンド構造体    */
+    memset(&G_CMD_M1_PARAM,0x00,sizeof(CMD_M1_PARAM));
+    /*  通信確認応答(受信メール数)コマンド構造体        */
+    memset(&G_CMD_M2_PARAM,0x00,sizeof(CMD_M2_PARAM));
+    /*  通信確認応答(送信メール数)コマンド構造体        */
+    memset(&G_CMD_M3_PARAM,0x00,sizeof(CMD_M3_PARAM));
+    /*  通信確認応答(リトライ回数)コマンド構造体        */
+    memset(&G_CMD_M4_PARAM,0x00,sizeof(CMD_M4_PARAM));
+    /*  XXXXXXXXXコマンド構造体                         */
+    memset(&G_CMD_M5_PARAM,0x00,sizeof(CMD_M5_PARAM));
+    /*  XXXXXXXXXコマンド構造体                         */
+    memset(&G_CMD_M6_PARAM,0x00,sizeof(CMD_M6_PARAM));
+    /*  XXXXXXXXXコマンド構造体                         */
+    memset(&G_CMD_M7_PARAM,0x00,sizeof(CMD_M7_PARAM));
+    /*  XXXXXXXXXコマンド構造体                         */
+    memset(&G_CMD_M8_PARAM,0x00,sizeof(CMD_M8_PARAM));
+    /*  エリア外警報コマンド構造体                      */
+    memset(&G_CMD_SA_PARAM,0x00,sizeof(CMD_SA_PARAM));
+    /*  バッテリ外し警報コマンド構造体                  */
+    memset(&G_CMD_BT_PARAM,0x00,sizeof(CMD_BT_PARAM));
+    /*  無操作時間コマンド構造体                        */
+    memset(&G_CMD_I_PARAM,0x00,sizeof(CMD_I_PARAM));
+    /*  燃料残量コマンド構造体                          */
+    memset(&G_CMD_F_PARAM,0x00,sizeof(CMD_F_PARAM));
+    /*  ｴﾝｼﾞﾝｵｲﾙ交換残時間コマンド構造体                */
+    memset(&G_CMD_EC_PARAM,0x00,sizeof(CMD_EC_PARAM));
+    /*  エンジン始動時間コマンド構造体                  */
+    memset(&G_CMD_T_PARAM,0x00,sizeof(CMD_T_PARAM));
+    /*  エンジン停止時間コマンド構造体                  */
+    memset(&G_CMD_P_PARAM,0x00,sizeof(CMD_P_PARAM));
+    /*  走行時間コマンド構造体                          */
+    memset(&G_CMD_R_PARAM,0x00,sizeof(CMD_R_PARAM));
+    /*  ハイリーチ使用時間コマンド構造体                */
+    memset(&G_CMD_C_PARAM,0x00,sizeof(CMD_C_PARAM));
+    /*  N&B使用時間コマンド構造体                       */
+    memset(&G_CMD_N_PARAM,0x00,sizeof(CMD_N_PARAM));
+    /*  エンジン水温分布コマンド構造体                  */
+    memset(&G_CMD_W_PARAM,0x00,sizeof(CMD_W_PARAM));
+    /*  ポンプ圧力分布コマンド構造体                    */
+    memset(&G_CMD_U_PARAM,0x00,sizeof(CMD_U_PARAM));
+    /*  ポンプ稼動量コマンド構造体                      */
+    memset(&G_CMD_J_PARAM,0x00,sizeof(CMD_J_PARAM));
+    /*  燃料ﾌｨﾙﾀ交換残時間コマンド構造体                */
+    memset(&G_CMD_FC_PARAM,0x00,sizeof(CMD_FC_PARAM));
+    /*  作動油ﾌｨﾙﾀ交換残時間コマンド構造体              */
+    memset(&G_CMD_HC_PARAM,0x00,sizeof(CMD_HC_PARAM));
+    /*  ｵｰﾊﾞｰﾛｰﾄﾞ状態時間コマンド構造体                 */
+    memset(&G_CMD_OV_PARAM,0x00,sizeof(CMD_OV_PARAM));
+    /*  燃料温度コマンド構造体                          */
+    memset(&G_CMD_FT_PARAM,0x00,sizeof(CMD_FT_PARAM));
+    /*  燃料識別値コマンド構造体                        */
+    memset(&G_CMD_FS_PARAM,0x00,sizeof(CMD_FS_PARAM));
+    /*  作動油交換残時間コマンド構造体                  */
+    memset(&G_CMD_LC_PARAM,0x00,sizeof(CMD_LC_PARAM));
+    /*  アワメータ変更コマンド構造体                    */
+    memset(&G_CMD_HS_PARAM,0x00,sizeof(CMD_HS_PARAM));
+    /*  ｴﾝｼﾞﾝｵｲﾙ交換残時間変更コマンド構造体            */
+    memset(&G_CMD_HE_PARAM,0x00,sizeof(CMD_HE_PARAM));
+    /*  燃料ﾌｨﾙﾀ交換残時間変更コマンド構造体            */
+    memset(&G_CMD_HF_PARAM,0x00,sizeof(CMD_HF_PARAM));
+    /*  作動油ﾌｨﾙﾀ交換残時間変更コマンド構造体          */
+    memset(&G_CMD_HH_PARAM,0x00,sizeof(CMD_HH_PARAM));
+    /*  作動油交換残時間変更コマンド構造体              */
+    memset(&G_CMD_HL_PARAM,0x00,sizeof(CMD_HL_PARAM));
+    /*  警報（自己診断含む）コマンド構造体              */
+    memset(&G_CMD_XX_PARAM,0x00,sizeof(CMD_XX_PARAM));
+    /*  ｻｰﾋﾞｽ診断：WEB管理番号コマンド構造体            */
+    memset(&G_CMD_SD1_PARAM,0x00,sizeof(CMD_SD1_PARAM));
+    /*  ｻｰﾋﾞｽ診断：ｻｰﾋﾞｽ診断情報コマンド構造体          */
+    memset(&G_CMD_SD2_PARAM,0x00,sizeof(CMD_SD2_PARAM));
+    /*  ｻｰﾋﾞｽ診断：応答コマンド構造体                   */
+    memset(&G_CMD_SD3_PARAM,0x00,sizeof(CMD_SD3_PARAM));
+    /*  故障来歴情報コマンド構造体                      */
+    memset(&G_CMD_AH_PARAM,0x00,sizeof(CMD_AH_PARAM));
+    /*  ﾒｶﾄﾛｺﾝﾄﾛｰﾗﾊﾟｰﾂNoコマンド構造体                  */
+    memset(&G_CMD_PN_PARAM,0x00,sizeof(CMD_PN_PARAM));
+    /*  ﾒｶﾄﾛｺﾝﾄﾛｰﾗｿﾌﾄVerコマンド構造体                  */
+    memset(&G_CMD_VR_PARAM,0x00,sizeof(CMD_VR_PARAM));
+    /*  燃費コマンド構造体                              */
+    memset(&G_CMD_NP_PARAM,0x00,sizeof(CMD_NP_PARAM));
+
+    /*  [TIER4A]モード別燃料消費量コマンド構造体        */
+    memset(&G_CMD_MC_PARAM,0x00,sizeof(CMD_MC_PARAM));
+    /*  [TIER4A]モード別稼働時間                        */
+    memset(&G_CMD_MT_PARAM,0x00,sizeof(CMD_MT_PARAM));
+    /*  [TIER4A]旋回操作時間                            */
+    memset(&G_CMD_SW_PARAM,0x00,sizeof(CMD_SW_PARAM));
+    /*  [Tier4A]エンジン調整値                          */
+    memset(&G_CMD_EA_PARAM,0x00,sizeof(CMD_ADJUST_PARAM));
+    /*  [TIER4A]ポンプ調整値(PA)                        */
+    memset(&G_CMD_PA_PARAM,0x00,sizeof(CMD_ADJUST_PARAM));
+    /*  [TIER4A]ポンプ調整値(PB)                        */
+    memset(&G_CMD_PB_PARAM,0x00,sizeof(CMD_ADJUST_PARAM));
+    /*  [TIER4A]ポンプ調整値(PC)                        */
+    memset(&G_CMD_PC_PARAM,0x00,sizeof(CMD_ADJUST_PARAM));
+    /*  [TIER4A]ポンプ調整値(UA)                        */
+    memset(&G_CMD_UA_PARAM,0x00,sizeof(CMD_MC_PARAM));
+    /*  [TIER4A]ポンプ調整値(UB)                        */
+    memset(&G_CMD_UB_PARAM,0x00,sizeof(CMD_ADJUST_PARAM));
+    /*  [TIER4A]エンジン始動回数                        */
+    memset(&G_CMD_ST_PARAM,0x00,sizeof(CMD_ST_PARAM));
+    /*  DPF目詰まりレベル                               */
+    memset(&G_CMD_SL_PARAM,0x00,sizeof(CMD_SL_PARAM));
+    /*  時差設定                                        */
+    memset(&G_CMD_TD_PARAM,0x00,sizeof(CMD_TD_PARAM));
+    /*  予防保全                                        */
+    memset(G_CMD_HOZEN_PARAM,0x00,sizeof(CMD_C20X5_PARAM)*MAX_HOZEN_PARAM);
+    /*  拡張稼働情報                                    */
+    memset(G_CMD_DAILY_EXT_PARAM,0x00,sizeof(CMD_C20X5_PARAM)*MAX_HANYO_PARAM);
+    /*  汎用メール形式                                  */
+    memset(G_CMD_HANYO_REC,0x00,sizeof(CMD_HANYO_PARAM)*MAX_HANYO_REC);
+    /*  汎用メール形式06                                  */
+    memset(G_CMD_FDFR_REC,0x00,sizeof(CMD_HANYO06_PARAM)*MAX_FDFR_REC);
+    /*  衝突軽減レポート  */
+    memset(G_CMD_AR_REC,0x00,sizeof(CMD_HANYO06_PARAM)*MAX_AR_REC);
+    /*  衝突軽減切替  */
+    memset(G_CMD_AE_REC,0x00,sizeof(CMD_C30X1_PARAM)*MAX_AE_REC);
+    /*  再生診断  */
+    memset(G_CMD_RR_REC,0x00,sizeof(CMD_HANYO06_PARAM)*MAX_RR_REC);
+    /*  SSID書込み                                        */
+    memset(&G_CMD_SSID_PARAM,0x00,sizeof(CMD_SSID_PARAM));
+    /*  K-LOAD作業データ  */
+    memset(G_CMD_KL_REC,0x00,sizeof(CMD_C30X10_PARAM)*MAX_KL_REC);
+}
+
+void free_cmd_param(){
+	
+	void *cur;
+	
+	cur = pG_CMD_T_PARAM;
+	if(NULL != pG_CMD_T_PARAM){
+		cur = ((CMD_T_PARAM *)cur)->next;
+		for(;;){
+			if(NULL == cur){
+				break;
+			}
+			if(NULL == ((CMD_T_PARAM *)cur)->next){
+				if(NULL != ((CMD_T_PARAM *)cur)->parent){
+					cur = ((CMD_T_PARAM *)cur)->parent;
+					#ifdef DEBUG
+					printf("[%s][Line:%04d]@@@@\n",__FUNCTION__,__LINE__);
+					#endif
+					free(((CMD_T_PARAM *)cur)->next);
+					((CMD_T_PARAM *)cur)->next = NULL;
+				}else{
+					/*	最上位到達	*/
+					break;
+				}
+			}else{
+				cur = ((CMD_T_PARAM *)cur)->next;
+			}
+		}
+		#ifdef DEBUG
+		printf("[%s][Line:%04d]####\n",__FUNCTION__,__LINE__);
+		#endif
+		free(pG_CMD_T_PARAM);
+		pG_CMD_T_PARAM = NULL;
+	}
+	
+	
+	cur = pG_CMD_P_PARAM;
+	if(NULL != pG_CMD_P_PARAM){
+		cur = ((CMD_P_PARAM *)cur)->next;
+		for(;;){
+			if(NULL == cur){
+				break;
+			}
+			if(NULL == ((CMD_P_PARAM *)cur)->next){
+				if(NULL != ((CMD_P_PARAM *)cur)->parent){
+					cur = ((CMD_P_PARAM *)cur)->parent;
+					#ifdef DEBUG
+					printf("[%s][Line:%04d]@@@@\n",__FUNCTION__,__LINE__);
+					#endif
+					free(((CMD_P_PARAM *)cur)->next);
+					((CMD_P_PARAM *)cur)->next = NULL;
+				}else{
+					/*	最上位到達	*/
+					break;
+				}
+			}else{
+				cur = ((CMD_P_PARAM *)cur)->next;
+			}
+		}
+		#ifdef DEBUG
+		printf("[%s][Line:%04d]####\n",__FUNCTION__,__LINE__);
+		#endif
+		free(pG_CMD_P_PARAM);
+		pG_CMD_P_PARAM = NULL;
+	}	
+	
+	
+	cur = pG_CMD_SD2_PARAM;
+	if(NULL != pG_CMD_SD2_PARAM){
+		cur = ((CMD_SD2_PARAM *)cur)->next;
+		for(;;){
+			if(NULL == cur){
+				break;
+			}
+			if(NULL == ((CMD_SD2_PARAM *)cur)->next){
+				if(NULL != ((CMD_SD2_PARAM *)cur)->parent){
+					cur = ((CMD_SD2_PARAM *)cur)->parent;
+#ifdef DEBUG
+					printf("[%s][Line:%04d]@@@@\n",__FUNCTION__,__LINE__);
+#endif
+					free(((CMD_SD2_PARAM *)cur)->next);
+					((CMD_SD2_PARAM *)cur)->next = NULL;
+				}else{
+					/*	最上位到達	*/
+					break;
+				}
+			}else{
+				cur = ((CMD_SD2_PARAM *)cur)->next;
+			}
+		}
+#ifdef DEBUG
+		printf("[%s][Line:%04d]####\n",__FUNCTION__,__LINE__);
+#endif
+		free(pG_CMD_SD2_PARAM);
+		pG_CMD_SD2_PARAM = NULL;
+	}
+	
+	cur = pG_CMD_AH_PARAM;
+	if(NULL != pG_CMD_AH_PARAM){
+		cur = ((CMD_AH_PARAM *)cur)->next;
+		for(;;){
+			if(NULL == cur){
+				break;
+			}
+			if(NULL == ((CMD_AH_PARAM *)cur)->next){
+				if(NULL != ((CMD_AH_PARAM *)cur)->parent){
+					cur = ((CMD_AH_PARAM *)cur)->parent;
+					printf("[%s][Line:%04d]@@@@\n",__FUNCTION__,__LINE__);
+					free(((CMD_AH_PARAM *)cur)->next);
+					((CMD_AH_PARAM *)cur)->next = NULL;
+				}else{
+					/*	最上位到達	*/
+					break;
+				}
+			}else{
+				cur = ((CMD_AH_PARAM *)cur)->next;
+			}
+		}
+		printf("[%s][Line:%04d]####\n",__FUNCTION__,__LINE__);
+		free(pG_CMD_AH_PARAM);
+		pG_CMD_AH_PARAM = NULL;
+	}	
+}
+
+
+CMD_T_PARAM* getParamArea_CMD_T_PARAM(){
+	
+	CMD_T_PARAM *ret = NULL;
+	CMD_T_PARAM *cur = NULL;
+	
+	if(NULL == pG_CMD_T_PARAM){
+		pG_CMD_T_PARAM = calloc(sizeof(CMD_T_PARAM),1);
+		ret = pG_CMD_T_PARAM;
+	}else{
+		cur = pG_CMD_T_PARAM;
+		for(;;){
+			if(NULL == cur->next){
+				cur->next = calloc(sizeof(CMD_T_PARAM),1);
+				cur->next->parent = cur;
+				ret = cur->next;
+				break;
+			}
+			cur = cur->next;
+		}
+	}
+	ret->next = NULL;
+	return ret;
+}
+
+CMD_P_PARAM* getParamArea_CMD_P_PARAM(){
+	
+	CMD_P_PARAM *ret = NULL;
+	CMD_P_PARAM *cur = NULL;
+	
+	if(NULL == pG_CMD_P_PARAM){
+		pG_CMD_P_PARAM = calloc(sizeof(CMD_P_PARAM),1);
+		ret = pG_CMD_P_PARAM;
+	}else{
+		cur = pG_CMD_P_PARAM;
+		for(;;){
+			if(NULL == cur->next){
+				cur->next = calloc(sizeof(CMD_P_PARAM),1);
+				cur->next->parent = cur;
+				ret = cur->next;
+				break;
+			}
+			cur = cur->next;
+		}
+	}
+	ret->next = NULL;
+	return ret;
+}
+
+CMD_SD2_PARAM* getParamArea_CMD_SD2_PARAM(){
+	
+	CMD_SD2_PARAM *ret = NULL;
+	CMD_SD2_PARAM *cur = NULL;
+	
+	if(NULL == pG_CMD_SD2_PARAM){
+		pG_CMD_SD2_PARAM = calloc(sizeof(CMD_SD2_PARAM),1);
+		ret = pG_CMD_SD2_PARAM;
+	}else{
+		cur = pG_CMD_SD2_PARAM;
+		for(;;){
+			if(NULL == cur->next){
+				cur->next = calloc(sizeof(CMD_SD2_PARAM),1);
+				cur->next->parent = cur;
+				ret = cur->next;
+				break;
+			}
+			cur = cur->next;
+		}
+	}
+	ret->next = NULL;
+	return ret;
+}
+
+CMD_AH_PARAM* getParamArea_CMD_AH_PARAM(){
+	
+	CMD_AH_PARAM *ret = NULL;
+	CMD_AH_PARAM *cur = NULL;
+	
+	if(NULL == pG_CMD_AH_PARAM){
+		pG_CMD_AH_PARAM = calloc(sizeof(CMD_AH_PARAM),1);
+		ret = pG_CMD_AH_PARAM;
+	}else{
+		cur = pG_CMD_AH_PARAM;
+		for(;;){
+			if(NULL == cur->next){
+				cur->next = calloc(sizeof(CMD_AH_PARAM),1);
+				cur->next->parent = cur;
+				ret = cur->next;
+				break;
+			}
+			cur = cur->next;
+		}
+	}
+	ret->next = NULL;
+	return ret;
+}
+
+
+int cmd_CMD_LINE_EGN_T(char *p1,char *p2){
+
+	CMD_T_PARAM *param = getParamArea_CMD_T_PARAM();
+	
+	strcpy(param->cmd_all, p1);              /*  コマンド行全文          */
+	strcpy(param->yymmddhh24mi, p2);         /*  月日時分                */
+}
